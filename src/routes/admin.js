@@ -4,6 +4,7 @@ const pool = require('../db/pool');
 const asyncHandler = require('../utils/async-handler');
 const { authenticate, allowRoles } = require('../middleware/auth');
 const { z, categorySlug, statuses, priorities } = require('../utils/validation');
+const { addPriorityBrief } = require('../utils/priority-brief');
 
 const router = express.Router();
 const reportColumns = `r.id, r.title, r.description, r.category, r.neighborhood, r.landmark,
@@ -13,7 +14,7 @@ const reportColumns = `r.id, r.title, r.description, r.category, r.neighborhood,
 
 router.get('/reports', authenticate, allowRoles('admin', 'super_admin'), asyncHandler(async (req, res) => {
   const [rows] = await pool.execute(`SELECT ${reportColumns} FROM reports r LEFT JOIN categories cat ON cat.slug = r.category LEFT JOIN users assignee ON assignee.id = r.assigned_to ORDER BY r.created_at DESC, r.id DESC`);
-  res.json({ data: rows });
+  res.json({ data: rows.map(addPriorityBrief) });
 }));
 
 router.patch('/reports/:id', authenticate, allowRoles('admin', 'super_admin'), asyncHandler(async (req, res) => {

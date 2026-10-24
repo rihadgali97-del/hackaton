@@ -10,6 +10,7 @@ import ReportDetail from './pages/ReportDetail';
 import Login from './pages/Login';
 import { AdminWorkspace, StaffWorkspace } from './pages/Workspaces';
 import { Loading } from './components/Shared';
+import 'leaflet/dist/leaflet.css';
 import './index.css';
 
 function LoginGate() {

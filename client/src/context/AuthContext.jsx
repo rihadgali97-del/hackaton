@@ -2,6 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { api } from '../services/api';
 
 const AuthContext = createContext(null);
+let currentUserRequest;
+
+function loadCurrentUser() {
+  if (!currentUserRequest) currentUserRequest = api('/auth/me').finally(() => { currentUserRequest = null; });
+  return currentUserRequest;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -10,12 +16,15 @@ export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!sessionStorage.getItem('fixnearme_token')) { setReady(true); return; }
-    api('/auth/me').then(({ data }) => setUser(data.user)).catch(() => {
+    let active = true;
+    if (!sessionStorage.getItem('fixnearme_token')) { setReady(true); return () => { active = false; }; }
+    loadCurrentUser().then(({ data }) => { if (active) setUser(data.user); }).catch((error) => {
+      if (!active || error.status !== 401) return;
       sessionStorage.removeItem('fixnearme_token');
       sessionStorage.removeItem('fixnearme_user');
       setUser(null);
-    }).finally(() => setReady(true));
+    }).finally(() => { if (active) setReady(true); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {

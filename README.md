@@ -74,6 +74,10 @@ Categories are managed by admins. New reports can use active categories only. Ca
 
 Report submission accepts `multipart/form-data`; use `image` for one optional JPEG, PNG, or WebP file up to 5 MB. The API checks the file signature, creates a random server-side filename, stores it under the ignored local `uploads/` directory, and returns its public `image_url`. Uploaded images are displayed on report details. Apply migration `002_report_image.sql` with `npm run migrate` before using image uploads. Local filesystem uploads suit development; use durable object storage for production deployments.
 
+Explore reports can be switched between list and map views. The map displays reports that include coordinates and uses OpenStreetMap raster tiles with visible attribution. Reporters can choose a point on the map or use browser geolocation; location permission requires HTTPS or localhost. The neighborhood field remains manually entered. OpenStreetMap's public tile servers are best-effort and have usage limits; follow the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) and use a suitable hosted tile provider for higher-traffic production deployments.
+
+Each report also includes a **Civic Priority Brief**, an explainable triage aid based on the selected priority, possible safety/health/access phrases, neighbor confirmations, and open-report age. It ranks the admin queue and recommends a next step. It never changes priority or dispatches staff automatically; an administrator reviews the report and makes those decisions.
+
 To assign or clear a staff member, a super admin sends `PATCH /api/admin/reports/:id` with `{ "assigned_to": 42 }` or `{ "assigned_to": null }`. Assignment requires an active staff account whose category matches the report. Every assignment/status/priority change is recorded in `report_updates` in the same transaction as the report update.
 
 ## Query examples

@@ -31,9 +31,13 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || process.env.CLIENT_ORIGIN
 app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)), credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), { dotfiles: 'deny', index: false, fallthrough: false, maxAge: '1h' }));
-app.use(rateLimit({ windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000), limit: Number(process.env.RATE_LIMIT_MAX || 100), standardHeaders: 'draft-7', legacyHeaders: false }));
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many sign-in attempts. Please wait a little and try again.' } } });
-const reportLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 25, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many report requests. Please wait a little and try again.' } } });
+const isLocalDevelopmentRequest = (req) => process.env.NODE_ENV === 'development'
+  && ['::1', '127.0.0.1', '::ffff:127.0.0.1'].includes(req.ip);
+const skipNonWriteRequests = (req) => ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+const limiterOptions = { standardHeaders: 'draft-7', legacyHeaders: false, skip: (req) => isLocalDevelopmentRequest(req) || skipNonWriteRequests(req) };
+app.use(rateLimit({ ...limiterOptions, windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000), limit: Number(process.env.RATE_LIMIT_MAX || 100) }));
+const authLimiter = rateLimit({ ...limiterOptions, windowMs: 15 * 60 * 1000, limit: 20, message: { error: { code: 'RATE_LIMITED', message: 'Too many sign-in attempts. Please wait a little and try again.' } } });
+const reportLimiter = rateLimit({ ...limiterOptions, windowMs: 15 * 60 * 1000, limit: 25, message: { error: { code: 'RATE_LIMITED', message: 'Too many report requests. Please wait a little and try again.' } } });
 
 app.get('/api/health', async (req, res) => {
   try {
@@ -43,7 +47,9 @@ app.get('/api/health', async (req, res) => {
     res.status(503).json({ status: 'degraded', database: 'unavailable' });
   }
 });
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports/check-duplicates', reportLimiter);
 app.use('/api/reports', (req, res, next) => req.method === 'POST' && req.path === '/' ? reportLimiter(req, res, next) : next(), reportRoutes);

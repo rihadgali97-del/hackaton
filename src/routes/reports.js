@@ -9,6 +9,7 @@ const { authenticate, optionalAuthenticate, allowRoles } = require('../middlewar
 const { z, categorySlug, statuses, priorities, reportSchema } = require('../utils/validation');
 const { findDuplicateReports } = require('../utils/duplicates');
 const { detectImageExtension } = require('../utils/image-type');
+const { addPriorityBrief } = require('../utils/priority-brief');
 
 const uploadDirectory = path.join(__dirname, '..', '..', 'uploads');
 const uploadImage = multer({
@@ -54,13 +55,13 @@ router.get('/', asyncHandler(async (req, res) => {
   const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN categories cat ON cat.slug = r.category LEFT JOIN users assignee ON assignee.id = r.assigned_to ${clause} ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`, [...params, q.limit, offset]);
   const [countRows] = await pool.execute(`SELECT COUNT(*) AS total FROM reports r ${clause}`, params);
   const total = Number(countRows[0].total);
-  res.json({ data: rows, pagination: { page: q.page, limit: q.limit, total, pages: Math.ceil(total / q.limit) } });
+  res.json({ data: rows.map(addPriorityBrief), pagination: { page: q.page, limit: q.limit, total, pages: Math.ceil(total / q.limit) } });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
   const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN categories cat ON cat.slug = r.category LEFT JOIN users assignee ON assignee.id = r.assigned_to WHERE r.id = ?`, [req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: { code: 'REPORT_NOT_FOUND', message: 'Report not found.' } });
-  res.json({ data: rows[0] });
+  res.json({ data: addPriorityBrief(rows[0]) });
 }));
 
 router.post('/check-duplicates', asyncHandler(async (req, res) => {
@@ -127,7 +128,7 @@ router.get('/:id/updates', asyncHandler(async (req, res) => {
     FROM report_updates ru LEFT JOIN users u ON u.id = ru.user_id
     LEFT JOIN users old_staff ON old_staff.id = ru.old_assigned_to LEFT JOIN users new_staff ON new_staff.id = ru.new_assigned_to
     WHERE ru.report_id = ? ORDER BY ru.created_at ASC, ru.id ASC`, [req.params.id]);
-  res.json({ data: rows });
+  res.json({ data: rows.map(addPriorityBrief) });
 }));
 
 router.get('/staff/assigned', authenticate, allowRoles('staff'), asyncHandler(async (req, res) => {

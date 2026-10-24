@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, CheckCircle2, MapPin, ShieldCheck, Sparkles, TriangleAlert } from 'lucide-react';
 import { api } from '../services/api';
 import { InlineMessage, PageHeading, ReportCard } from '../components/Shared';
+import ReportMap from '../components/ReportMap';
 
 const initial = { title: '', description: '', category: '', neighborhood: '', landmark: '', latitude: '', longitude: '' };
 
@@ -11,10 +12,31 @@ export default function NewReport() {
   const [checking, setChecking] = useState(false); const [submitting, setSubmitting] = useState(false); const [message, setMessage] = useState(null); const [checked, setChecked] = useState(false);
   const [image, setImage] = useState(null); const [imageError, setImageError] = useState(''); const [imagePreview, setImagePreview] = useState(''); const imageInput = useRef(null);
   const [categories, setCategories] = useState([]); const [categoryError, setCategoryError] = useState('');
+  const [locating, setLocating] = useState(false); const [locationMessage, setLocationMessage] = useState('');
+  const [locationToolsOpen, setLocationToolsOpen] = useState(false);
   const navigate = useNavigate();
   useEffect(() => { if (imagePreview) return () => URL.revokeObjectURL(imagePreview); }, [imagePreview]);
   useEffect(() => { api('/categories').then((result) => setCategories(result.data)).catch((error) => setCategoryError(error.message)); }, []);
   function set(key, value) { setForm((old) => ({ ...old, [key]: value })); setErrors((old) => ({ ...old, [key]: undefined })); setMessage(null); setChecked(false); }
+  function chooseMapLocation(location) {
+    setForm((old) => ({ ...old, latitude: location.latitude.toFixed(7), longitude: location.longitude.toFixed(7) }));
+    setErrors((old) => ({ ...old, latitude: undefined, longitude: undefined, coordinates: undefined }));
+    setLocationMessage('Location selected. You can adjust it by clicking the map or editing the coordinates.');
+    setChecked(false);
+  }
+  function useCurrentLocation() {
+    setLocationMessage('');
+    if (!navigator.geolocation) { setLocationMessage('Location is not available in this browser.'); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      chooseMapLocation({ latitude: coords.latitude, longitude: coords.longitude });
+      setLocationMessage(`Current location added (about ${Math.round(coords.accuracy)} m accuracy).`);
+      setLocating(false);
+    }, (error) => {
+      setLocationMessage(error.code === 1 ? 'Location permission was denied. You can still choose a point on the map.' : 'Could not get your location. Try selecting a point on the map.');
+      setLocating(false);
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  }
   function validate() {
     const next = {};
     if (form.title.trim().length < 5) next.title = 'Please use at least 5 characters.';
@@ -72,7 +94,7 @@ export default function NewReport() {
       <label className="field">Neighborhood <span className="required">*</span><input maxLength="120" value={form.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="e.g. Bole" aria-invalid={Boolean(errors.neighborhood)} />{errors.neighborhood && <small className="field-error">{errors.neighborhood}</small>}</label>
       <label className="field">Nearby landmark <span className="optional">OPTIONAL</span><input maxLength="255" value={form.landmark} onChange={(e) => set('landmark', e.target.value)} placeholder="A building, shop, school, or nearby street" /><small className="field-hint">For example, “opposite Bole clinic entrance”.</small></label>
       <div className="field image-field"><span>Photo of the problem <span className="optional">OPTIONAL</span></span><label className={`image-picker ${imagePreview ? 'has-image' : ''}`}><input ref={imageInput} type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseImage} /><span className="image-picker-mark"><MapPin size={18} /></span><span className="image-picker-copy"><b>{image ? image.name : 'Add a photo'}</b><small>JPEG, PNG, or WebP · up to 5 MB</small></span><span className="image-picker-button">Browse</span></label>{imageError && <small className="field-error" role="alert">{imageError}</small>}{imagePreview && <div className="image-preview"><img src={imagePreview} alt="Preview of the image attached to this report" /><button type="button" onClick={removeImage}>Remove photo</button></div>}<small className="field-hint">A clear photo helps the local team understand what to look for. Please avoid including people’s faces.</small></div>
-      <details className="coordinates"><summary><MapPin size={15} /> Add a map location <span className="optional">OPTIONAL</span></summary><p>Coordinates help teams pinpoint exactly where an issue is.</p><div className="coordinate-row"><label className="field">Latitude<input type="number" step="any" value={form.latitude} onChange={(e) => set('latitude', e.target.value)} placeholder="9.0222" aria-invalid={Boolean(errors.latitude)} />{errors.latitude && <small className="field-error">{errors.latitude}</small>}</label><label className="field">Longitude<input type="number" step="any" value={form.longitude} onChange={(e) => set('longitude', e.target.value)} placeholder="38.7468" aria-invalid={Boolean(errors.longitude)} />{errors.longitude && <small className="field-error">{errors.longitude}</small>}</label></div>{errors.coordinates && <small className="field-error">{errors.coordinates}</small>}</details>
+      <details className="coordinates" onToggle={(event) => setLocationToolsOpen(event.currentTarget.open)}><summary><MapPin size={15} /> Add a map location <span className="optional">OPTIONAL</span></summary><p>Use your location, click the map, or enter coordinates to pinpoint the issue.</p><button type="button" className="btn btn-secondary locate-button" onClick={useCurrentLocation} disabled={locating}>{locating ? 'Finding your location…' : <><MapPin size={15}/> Use my current location</>}</button>{locationMessage && <small className="location-message" role="status">{locationMessage}</small>}<div className="coordinate-row"><label className="field">Latitude<input type="number" step="any" value={form.latitude} onChange={(e) => set('latitude', e.target.value)} placeholder="9.0222" aria-invalid={Boolean(errors.latitude)} />{errors.latitude && <small className="field-error">{errors.latitude}</small>}</label><label className="field">Longitude<input type="number" step="any" value={form.longitude} onChange={(e) => set('longitude', e.target.value)} placeholder="38.7468" aria-invalid={Boolean(errors.longitude)} />{errors.longitude && <small className="field-error">{errors.longitude}</small>}</label></div>{errors.coordinates && <small className="field-error">{errors.coordinates}</small>}<p className="map-picker-instruction">Click the map to place or move the location pin.</p>{locationToolsOpen && <ReportMap reports={[]} selectedLocation={form.latitude && form.longitude ? {latitude:Number(form.latitude),longitude:Number(form.longitude)} : null} onPick={chooseMapLocation} className="location-picker-map" />}</details>
       <div className="form-divider" /><button type="button" onClick={checkDuplicates} disabled={checking || submitting} className="btn btn-secondary duplicate-check"><Sparkles size={16} />{checking ? 'Checking nearby reports…' : 'Check for similar reports'}<ArrowRight size={15} /></button>
       {checked && matches.length > 0 && <div className="duplicate-results"><div className="duplicate-heading"><TriangleAlert size={18} /><div><b>We found some reports that may be related</b><span>These are suggestions. You can still submit a new report.</span></div></div><div className="duplicate-list">{matches.slice(0, 3).map(({ report, score, reasons }) => <Link key={report.id} to={`/reports/${report.id}`} className="duplicate-item"><span><b>{report.title}</b><small>{report.neighborhood} · {reasons.join(' · ')}</small></span><span className="similarity-score">{score}% match <ArrowRight size={13} /></span></Link>)}</div></div>}
       {checked && matches.length === 0 && <div className="duplicate-clear"><CheckCircle2 size={16} /> No close matches found. Your report is ready to go.</div>}
