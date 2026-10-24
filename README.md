@@ -1,6 +1,6 @@
 # FixNearMe
 
-FixNearMe tracks neighborhood problems from resident submission through staff resolution. The repository contains a React/Vite/Tailwind client and a Node.js/Express/MySQL API. A super admin creates staff accounts and assigns reports to them.
+FixNearMe tracks neighborhood problems from resident submission through staff resolution. The repository contains a React/Vite/Tailwind client and a Node.js/Express/MySQL API. Admins create staff accounts for a selected category; super admins assign matching staff to reports.
 
 ## Requirements
 
@@ -9,7 +9,7 @@ FixNearMe tracks neighborhood problems from resident submission through staff re
 
 ## Run locally
 
-1. Create an empty MySQL database named `fixnearme` (or set `DB_NAME` to an existing database).
+1. Create an empty MySQL database named `nearfixme` (or set `DB_NAME` to an existing database).
 2. Copy `.env.example` to `.env` and set the database credentials and a random `JWT_SECRET` of at least 32 characters.
 3. Install API dependencies in the repository root with `npm install` and frontend dependencies with `npm --prefix client install`.
 4. Create the schema with `npm run migrate`.
@@ -35,8 +35,8 @@ To reset an existing super-admin password, set `SUPER_ADMIN_EMAIL` and `SUPER_AD
 
 - **Resident:** register, sign in, submit and confirm reports.
 - **Staff:** see reports assigned to them and change their assigned report to `in_progress` or `resolved`, with an optional update note.
-- **Admin:** review all reports and change report status, priority, and notes.
-- **Super admin:** all admin capabilities, create/deactivate staff accounts, and assign or unassign staff on reports.
+- **Admin:** review all reports, manage report categories, create staff accounts for a selected category, and change report status, priority, and notes.
+- **Super admin:** all admin capabilities, deactivate staff accounts, and assign or unassign staff on reports. Each staff account belongs to one category.
 
 Registration always creates a resident. The only initial super admin is created through the one-time local bootstrap script. Tokens are signed JWTs; each request reloads the active role from MySQL so deactivated accounts lose access immediately.
 
@@ -59,17 +59,22 @@ All endpoints use `/api`. Protected routes accept `Authorization: Bearer <token>
 | `GET /dashboard/stats` | Public | Counts by status/category, urgent/unassigned totals, recent reports |
 | `GET /admin/reports` | Admin, super admin | All reports for administration |
 | `PATCH /admin/reports/:id` | Admin, super admin | Update status/priority/note; assignment fields are super-admin only |
+| `GET /admin/categories` | Admin, super admin | List categories with report/staff counts |
+| `POST /admin/categories` | Admin, super admin | Create a category (`name`, optional `description`); its key is generated from its name |
+| `PATCH /admin/categories/:slug` | Admin, super admin | Edit a category name/description or restore an archived category |
+| `DELETE /admin/categories/:slug` | Admin, super admin | Archive a category while preserving report history |
+| `GET /categories` | Public | List active categories used by report submission and filters |
 | `GET /reports/staff/assigned` | Staff | Current staff member's assigned work |
 | `PATCH /reports/staff/reports/:id` | Assigned staff | Set `in_progress` or `resolved`, add note |
-| `GET /admin/staff` | Super admin | Staff list and workload |
-| `POST /admin/staff` | Super admin | Create staff (`name`, `email`, temporary `password`, minimum 12 chars) |
+| `GET /admin/staff` | Admin, super admin | Staff list and workload |
+| `POST /admin/staff` | Admin, super admin | Create staff (`name`, `email`, `password`, minimum 12 chars, and active `category` key) |
 | `PATCH /admin/staff/:id` | Super admin | Activate/deactivate staff (`is_active`) |
 
-Report categories: `road_damage`, `streetlight`, `water_leak`, `drainage`, `waste`, `sidewalk`, `other`. Statuses: `reported`, `under_review`, `in_progress`, `resolved`, `rejected`. Priorities: `low`, `medium`, `high`, `urgent`.
+Categories are managed by admins. New reports can use active categories only. Category keys remain stable if the display name changes; archived categories stay attached to historical reports and can be restored. Super admins can assign a report only to active staff in that report's category; the admin screen filters the staff list accordingly, and the API enforces the same rule. Statuses: `reported`, `under_review`, `in_progress`, `resolved`, `rejected`. Priorities: `low`, `medium`, `high`, `urgent`.
 
 Report submission accepts `multipart/form-data`; use `image` for one optional JPEG, PNG, or WebP file up to 5 MB. The API checks the file signature, creates a random server-side filename, stores it under the ignored local `uploads/` directory, and returns its public `image_url`. Uploaded images are displayed on report details. Apply migration `002_report_image.sql` with `npm run migrate` before using image uploads. Local filesystem uploads suit development; use durable object storage for production deployments.
 
-To assign or clear a staff member, a super admin sends `PATCH /api/admin/reports/:id` with `{ "assigned_to": 42 }` or `{ "assigned_to": null }`. Assignment requires an active account whose role is `staff`. Every assignment/status/priority change is recorded in `report_updates` in the same transaction as the report update.
+To assign or clear a staff member, a super admin sends `PATCH /api/admin/reports/:id` with `{ "assigned_to": 42 }` or `{ "assigned_to": null }`. Assignment requires an active staff account whose category matches the report. Every assignment/status/priority change is recorded in `report_updates` in the same transaction as the report update.
 
 ## Query examples
 

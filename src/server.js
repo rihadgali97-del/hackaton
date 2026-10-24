@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const reportRoutes = require('./routes/reports');
 const adminRoutes = require('./routes/admin');
 const dashboardRoutes = require('./routes/dashboard');
+const categoryRoutes = require('./routes/categories');
 const { notFound, errorHandler } = require('./middleware/errors');
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
@@ -43,6 +44,7 @@ app.get('/api/health', async (req, res) => {
   }
 });
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/reports/check-duplicates', reportLimiter);
 app.use('/api/reports', (req, res, next) => req.method === 'POST' && req.path === '/' ? reportLimiter(req, res, next) : next(), reportRoutes);
 app.use('/api/dashboard', dashboardRoutes);

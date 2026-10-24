@@ -5,20 +5,21 @@ import { api } from '../services/api';
 import { InlineMessage, PageHeading, ReportCard } from '../components/Shared';
 
 const initial = { title: '', description: '', category: '', neighborhood: '', landmark: '', latitude: '', longitude: '' };
-const categories = [['road_damage', 'Road damage'], ['streetlight', 'Streetlight'], ['water_leak', 'Water leak'], ['drainage', 'Blocked drain'], ['waste', 'Waste or litter'], ['sidewalk', 'Sidewalk'], ['other', 'Something else']];
 
 export default function NewReport() {
   const [form, setForm] = useState(initial); const [errors, setErrors] = useState({}); const [matches, setMatches] = useState([]);
   const [checking, setChecking] = useState(false); const [submitting, setSubmitting] = useState(false); const [message, setMessage] = useState(null); const [checked, setChecked] = useState(false);
   const [image, setImage] = useState(null); const [imageError, setImageError] = useState(''); const [imagePreview, setImagePreview] = useState(''); const imageInput = useRef(null);
+  const [categories, setCategories] = useState([]); const [categoryError, setCategoryError] = useState('');
   const navigate = useNavigate();
   useEffect(() => { if (imagePreview) return () => URL.revokeObjectURL(imagePreview); }, [imagePreview]);
+  useEffect(() => { api('/categories').then((result) => setCategories(result.data)).catch((error) => setCategoryError(error.message)); }, []);
   function set(key, value) { setForm((old) => ({ ...old, [key]: value })); setErrors((old) => ({ ...old, [key]: undefined })); setMessage(null); setChecked(false); }
   function validate() {
     const next = {};
     if (form.title.trim().length < 5) next.title = 'Please use at least 5 characters.';
     if (form.description.trim().length < 10) next.description = 'Add at least 10 characters so the team knows what to look for.';
-    if (!form.category) next.category = 'Choose the type of issue.';
+    if (!categories.some((category) => category.slug === form.category)) next.category = categoryError || 'Choose an active issue category.';
     if (form.neighborhood.trim().length < 2) next.neighborhood = 'Enter the neighborhood.';
     if ((form.latitude && !form.longitude) || (!form.latitude && form.longitude)) next.coordinates = 'Add both coordinates or leave both blank.';
     if (form.latitude && (Number(form.latitude) < -90 || Number(form.latitude) > 90 || Number.isNaN(Number(form.latitude)))) next.latitude = 'Latitude must be between -90 and 90.';
@@ -66,7 +67,7 @@ export default function NewReport() {
       <div className="form-section-head"><span>01</span><div><h2>What’s going on?</h2><p>Tell us what you noticed. Keep it clear and specific.</p></div></div>
       <label className="field">Report title <span className="required">*</span><input maxLength="180" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Streetlight out on Maple Avenue" aria-invalid={Boolean(errors.title)} />{errors.title && <small className="field-error">{errors.title}</small>}<small className="field-hint">{form.title.length}/180 characters</small></label>
       <label className="field">Description <span className="required">*</span><textarea rows="5" maxLength="5000" value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="What happened? When did you first notice it? Any details that could help the team find it?" aria-invalid={Boolean(errors.description)} />{errors.description && <small className="field-error">{errors.description}</small>}<small className="field-hint">A helpful description gets the right attention.</small></label>
-      <label className="field">Type of issue <span className="required">*</span><select value={form.category} onChange={(e) => set('category', e.target.value)} aria-invalid={Boolean(errors.category)}><option value="">Choose a category</option>{categories.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>{errors.category && <small className="field-error">{errors.category}</small>}</label>
+      <label className="field">Type of issue <span className="required">*</span><select value={form.category} onChange={(e) => set('category', e.target.value)} aria-invalid={Boolean(errors.category)} disabled={!categories.length}><option value="">{categories.length ? 'Choose a category' : 'Loading categories…'}</option>{categories.map((category) => <option value={category.slug} key={category.slug}>{category.name}</option>)}</select>{errors.category && <small className="field-error">{errors.category}</small>}</label>
       <div className="form-section-head second"><span>02</span><div><h2>Help us find it</h2><p>A neighborhood and landmark give the team a good starting point.</p></div></div>
       <label className="field">Neighborhood <span className="required">*</span><input maxLength="120" value={form.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="e.g. Bole" aria-invalid={Boolean(errors.neighborhood)} />{errors.neighborhood && <small className="field-error">{errors.neighborhood}</small>}</label>
       <label className="field">Nearby landmark <span className="optional">OPTIONAL</span><input maxLength="255" value={form.landmark} onChange={(e) => set('landmark', e.target.value)} placeholder="A building, shop, school, or nearby street" /><small className="field-hint">For example, “opposite Bole clinic entrance”.</small></label>

@@ -21,7 +21,7 @@ export function ReportCard({ report }) {
   return (
     <Link to={`/reports/${report.id}`} className="report-card group">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-2"><span className="category-label">{report.category.replaceAll('_', ' ')}</span><PriorityBadge priority={report.priority} /></div>
+        <div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-2"><span className="category-label">{report.category_name || report.category.replaceAll('_', ' ')}</span><PriorityBadge priority={report.priority} /></div>
           <h3 className="line-clamp-2 text-base font-bold text-ink group-hover:text-leaf">{report.title}</h3></div>
         <ArrowRight size={18} className="mt-1 shrink-0 text-muted transition group-hover:translate-x-1 group-hover:text-leaf" />
       </div>

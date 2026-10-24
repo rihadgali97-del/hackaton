@@ -6,7 +6,7 @@ const multer = require('multer');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/async-handler');
 const { authenticate, optionalAuthenticate, allowRoles } = require('../middleware/auth');
-const { z, statuses, priorities, reportSchema } = require('../utils/validation');
+const { z, categorySlug, statuses, priorities, reportSchema } = require('../utils/validation');
 const { findDuplicateReports } = require('../utils/duplicates');
 const { detectImageExtension } = require('../utils/image-type');
 
@@ -28,7 +28,7 @@ function parseReportImage(req, res, next) {
 const router = express.Router();
 const publicColumns = `r.id, r.title, r.description, r.category, r.neighborhood, r.landmark,
   r.image_url, r.latitude, r.longitude, r.status, r.priority, r.assigned_to, r.created_at, r.updated_at, r.resolved_at,
-  assignee.name AS assigned_to_name,
+  cat.name AS category_name, assignee.name AS assigned_to_name,
   (SELECT COUNT(*) FROM report_confirmations c WHERE c.report_id = r.id) AS confirmations`;
 
 router.get('/', asyncHandler(async (req, res) => {
@@ -44,26 +44,29 @@ router.get('/', asyncHandler(async (req, res) => {
   if (search) { where.push('(r.title LIKE ? OR r.description LIKE ? OR r.landmark LIKE ?)'); const term = `%${search}%`; params.push(term, term, term); }
   for (const [field, value] of [['category', q.category], ['status', q.status], ['priority', q.priority], ['neighborhood', q.neighborhood]]) {
     if (!value) continue;
-    const valid = field === 'category' ? ['road_damage','streetlight','water_leak','drainage','waste','sidewalk','other'] : field === 'status' ? statuses : field === 'priority' ? priorities : null;
+    const valid = field === 'status' ? statuses : field === 'priority' ? priorities : null;
+    if (field === 'category' && !categorySlug.safeParse(value).success) return res.status(400).json({ error: { code: 'INVALID_FILTER', message: 'Invalid category filter.' } });
     if (valid && !valid.includes(value)) return res.status(400).json({ error: { code: 'INVALID_FILTER', message: `Invalid ${field} filter.` } });
     where.push(`r.${field} = ?`); params.push(value);
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const offset = (q.page - 1) * q.limit;
-  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN users u ON u.id = r.created_by LEFT JOIN users assignee ON assignee.id = r.assigned_to ${clause} ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`, [...params, q.limit, offset]);
+  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN categories cat ON cat.slug = r.category LEFT JOIN users assignee ON assignee.id = r.assigned_to ${clause} ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`, [...params, q.limit, offset]);
   const [countRows] = await pool.execute(`SELECT COUNT(*) AS total FROM reports r ${clause}`, params);
   const total = Number(countRows[0].total);
   res.json({ data: rows, pagination: { page: q.page, limit: q.limit, total, pages: Math.ceil(total / q.limit) } });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
-  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN users u ON u.id = r.created_by LEFT JOIN users assignee ON assignee.id = r.assigned_to WHERE r.id = ?`, [req.params.id]);
+  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN categories cat ON cat.slug = r.category LEFT JOIN users assignee ON assignee.id = r.assigned_to WHERE r.id = ?`, [req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: { code: 'REPORT_NOT_FOUND', message: 'Report not found.' } });
   res.json({ data: rows[0] });
 }));
 
 router.post('/check-duplicates', asyncHandler(async (req, res) => {
   const data = reportSchema.parse(req.body);
+  const [activeCategories] = await pool.execute('SELECT slug FROM categories WHERE slug = ? AND is_active = TRUE', [data.category]);
+  if (!activeCategories.length) return res.status(400).json({ error: { code: 'INVALID_CATEGORY', message: 'Choose an active report category.' } });
   const [candidates] = await pool.execute(
     `SELECT id, title, description, category, neighborhood, landmark, latitude, longitude, status, priority, created_at
      FROM reports WHERE status NOT IN ('resolved','rejected') AND category = ?
@@ -77,6 +80,8 @@ router.post('/check-duplicates', asyncHandler(async (req, res) => {
 
 router.post('/', optionalAuthenticate, parseReportImage, asyncHandler(async (req, res) => {
   const data = reportSchema.parse(req.body);
+  const [activeCategories] = await pool.execute('SELECT slug FROM categories WHERE slug = ? AND is_active = TRUE', [data.category]);
+  if (!activeCategories.length) return res.status(400).json({ error: { code: 'INVALID_CATEGORY', message: 'Choose an active report category.' } });
   const userId = req.get('authorization') ? req.user?.id : null;
   let imageUrl = null;
   let imagePath = null;
@@ -126,7 +131,7 @@ router.get('/:id/updates', asyncHandler(async (req, res) => {
 }));
 
 router.get('/staff/assigned', authenticate, allowRoles('staff'), asyncHandler(async (req, res) => {
-  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN users u ON u.id = r.created_by LEFT JOIN users assignee ON assignee.id = r.assigned_to WHERE r.assigned_to = ? ORDER BY r.priority = 'urgent' DESC, r.created_at ASC`, [req.user.id]);
+  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN categories cat ON cat.slug = r.category LEFT JOIN users assignee ON assignee.id = r.assigned_to WHERE r.assigned_to = ? ORDER BY r.priority = 'urgent' DESC, r.created_at ASC`, [req.user.id]);
   res.json({ data: rows });
 }));
 
