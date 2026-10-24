@@ -1,0 +1,18 @@
+function notFound(req, res) {
+  res.status(404).json({ error: { code: 'NOT_FOUND', message: 'The requested endpoint was not found.' } });
+}
+
+function errorHandler(error, req, res, next) {
+  if (res.headersSent) return next(error);
+  if (error.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Request body must contain valid JSON.' } });
+  }
+  if (error.name === 'ZodError') {
+    return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Check the submitted fields.', details: error.issues.map(({ path, message }) => ({ field: path.join('.'), message })) } });
+  }
+  if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: { code: 'CONFLICT', message: 'That record already exists.' } });
+  console.error(error);
+  res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected server error occurred.' } });
+}
+
+module.exports = { notFound, errorHandler };

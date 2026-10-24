@@ -1,0 +1,116 @@
+const express = require('express');
+const pool = require('../db/pool');
+const asyncHandler = require('../utils/async-handler');
+const { authenticate, optionalAuthenticate, allowRoles } = require('../middleware/auth');
+const { z, statuses, priorities, reportSchema } = require('../utils/validation');
+const { findDuplicateReports } = require('../utils/duplicates');
+
+const router = express.Router();
+const publicColumns = `r.id, r.title, r.description, r.category, r.neighborhood, r.landmark,
+  r.latitude, r.longitude, r.status, r.priority, r.assigned_to, r.created_at, r.updated_at, r.resolved_at,
+  assignee.name AS assigned_to_name,
+  (SELECT COUNT(*) FROM report_confirmations c WHERE c.report_id = r.id) AS confirmations`;
+
+router.get('/', asyncHandler(async (req, res) => {
+  const querySchema = z.object({
+    search: z.string().trim().max(120).optional(), q: z.string().trim().max(120).optional(), category: z.string().optional(), status: z.string().optional(),
+    priority: z.string().optional(), neighborhood: z.string().trim().max(120).optional(),
+    page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(20),
+  });
+  const q = querySchema.parse(req.query);
+  const where = [];
+  const params = [];
+  const search = q.search || q.q;
+  if (search) { where.push('(r.title LIKE ? OR r.description LIKE ? OR r.landmark LIKE ?)'); const term = `%${search}%`; params.push(term, term, term); }
+  for (const [field, value] of [['category', q.category], ['status', q.status], ['priority', q.priority], ['neighborhood', q.neighborhood]]) {
+    if (!value) continue;
+    const valid = field === 'category' ? ['road_damage','streetlight','water_leak','drainage','waste','sidewalk','other'] : field === 'status' ? statuses : field === 'priority' ? priorities : null;
+    if (valid && !valid.includes(value)) return res.status(400).json({ error: { code: 'INVALID_FILTER', message: `Invalid ${field} filter.` } });
+    where.push(`r.${field} = ?`); params.push(value);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const offset = (q.page - 1) * q.limit;
+  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN users u ON u.id = r.created_by LEFT JOIN users assignee ON assignee.id = r.assigned_to ${clause} ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`, [...params, q.limit, offset]);
+  const [countRows] = await pool.execute(`SELECT COUNT(*) AS total FROM reports r ${clause}`, params);
+  const total = Number(countRows[0].total);
+  res.json({ data: rows, pagination: { page: q.page, limit: q.limit, total, pages: Math.ceil(total / q.limit) } });
+}));
+
+router.get('/:id', asyncHandler(async (req, res) => {
+  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN users u ON u.id = r.created_by LEFT JOIN users assignee ON assignee.id = r.assigned_to WHERE r.id = ?`, [req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: { code: 'REPORT_NOT_FOUND', message: 'Report not found.' } });
+  res.json({ data: rows[0] });
+}));
+
+router.post('/check-duplicates', asyncHandler(async (req, res) => {
+  const data = reportSchema.parse(req.body);
+  const [candidates] = await pool.execute(
+    `SELECT id, title, description, category, neighborhood, landmark, latitude, longitude, status, priority, created_at
+     FROM reports WHERE status NOT IN ('resolved','rejected') AND category = ?
+     ORDER BY created_at DESC LIMIT 200`,
+    [data.category],
+  );
+  const threshold = Number(process.env.DUPLICATE_THRESHOLD || 60);
+  const matches = findDuplicateReports(candidates, data, threshold);
+  res.json({ data: matches, threshold, suggestions_only: true });
+}));
+
+router.post('/', optionalAuthenticate, asyncHandler(async (req, res) => {
+  const data = reportSchema.parse(req.body);
+  const userId = req.get('authorization') ? req.user?.id : null;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [result] = await conn.execute(
+      `INSERT INTO reports (title, description, category, neighborhood, landmark, latitude, longitude, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [data.title, data.description, data.category, data.neighborhood, data.landmark || null, data.latitude ?? null, data.longitude ?? null, userId || null],
+    );
+    await conn.execute(`INSERT INTO report_updates (report_id, user_id, old_status, new_status, old_priority, new_priority, note)
+      VALUES (?, ?, NULL, 'reported', NULL, 'medium', 'Report submitted')`, [result.insertId, userId || null]);
+    await conn.commit();
+    res.status(201).json({ data: { id: result.insertId, ...data, status: 'reported', priority: 'medium' } });
+  } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+}));
+
+router.post('/:id/confirm', authenticate, asyncHandler(async (req, res) => {
+  const [reports] = await pool.execute('SELECT id FROM reports WHERE id = ?', [req.params.id]);
+  if (!reports.length) return res.status(404).json({ error: { code: 'REPORT_NOT_FOUND', message: 'Report not found.' } });
+  const [result] = await pool.execute('INSERT IGNORE INTO report_confirmations (report_id, user_id) VALUES (?, ?)', [req.params.id, req.user.id]);
+  if (!result.affectedRows) return res.status(409).json({ error: { code: 'ALREADY_CONFIRMED', message: 'You already confirmed this report.' } });
+  res.status(201).json({ data: { confirmed: true } });
+}));
+
+router.get('/:id/updates', asyncHandler(async (req, res) => {
+  const [rows] = await pool.execute(`SELECT ru.id, ru.old_status, ru.new_status, ru.old_priority, ru.new_priority,
+    ru.old_assigned_to, ru.new_assigned_to, ru.note, ru.created_at, u.name AS updated_by,
+    old_staff.name AS old_assignee_name, new_staff.name AS new_assignee_name
+    FROM report_updates ru LEFT JOIN users u ON u.id = ru.user_id
+    LEFT JOIN users old_staff ON old_staff.id = ru.old_assigned_to LEFT JOIN users new_staff ON new_staff.id = ru.new_assigned_to
+    WHERE ru.report_id = ? ORDER BY ru.created_at ASC, ru.id ASC`, [req.params.id]);
+  res.json({ data: rows });
+}));
+
+router.get('/staff/assigned', authenticate, allowRoles('staff'), asyncHandler(async (req, res) => {
+  const [rows] = await pool.execute(`SELECT ${publicColumns} FROM reports r LEFT JOIN users u ON u.id = r.created_by LEFT JOIN users assignee ON assignee.id = r.assigned_to WHERE r.assigned_to = ? ORDER BY r.priority = 'urgent' DESC, r.created_at ASC`, [req.user.id]);
+  res.json({ data: rows });
+}));
+
+router.patch('/staff/reports/:id', authenticate, allowRoles('staff'), asyncHandler(async (req, res) => {
+  const body = z.object({ status: z.enum(['in_progress', 'resolved']).optional(), note: z.string().trim().max(1000).optional() }).refine((v) => v.status || v.note, 'Provide a status or note').parse(req.body);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.execute('SELECT id, status, priority, assigned_to FROM reports WHERE id = ? FOR UPDATE', [req.params.id]);
+    const report = rows[0];
+    if (!report) { await conn.rollback(); return res.status(404).json({ error: { code: 'REPORT_NOT_FOUND', message: 'Report not found.' } }); }
+    if (String(report.assigned_to) !== String(req.user.id)) { await conn.rollback(); return res.status(403).json({ error: { code: 'NOT_ASSIGNED', message: 'You can update reports assigned to you.' } }); }
+    const status = body.status || report.status;
+    await conn.execute('UPDATE reports SET status = ?, resolved_at = ? WHERE id = ?', [status, status === 'resolved' ? new Date() : null, report.id]);
+    await conn.execute(`INSERT INTO report_updates (report_id, user_id, old_status, new_status, old_priority, new_priority, old_assigned_to, new_assigned_to, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [report.id, req.user.id, report.status, status, report.priority, report.priority, report.assigned_to, report.assigned_to, body.note || null]);
+    await conn.commit();
+    res.json({ data: { id: report.id, status } });
+  } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+}));
+
+module.exports = router;
