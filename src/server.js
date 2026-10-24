@@ -10,6 +10,7 @@ const reportRoutes = require('./routes/reports');
 const adminRoutes = require('./routes/admin');
 const dashboardRoutes = require('./routes/dashboard');
 const categoryRoutes = require('./routes/categories');
+const notificationRoutes = require('./routes/notifications');
 const { notFound, errorHandler } = require('./middleware/errors');
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
@@ -55,6 +56,7 @@ app.use('/api/reports/check-duplicates', reportLimiter);
 app.use('/api/reports', (req, res, next) => req.method === 'POST' && req.path === '/' ? reportLimiter(req, res, next) : next(), reportRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api', notFound);
 app.use(errorHandler);
 

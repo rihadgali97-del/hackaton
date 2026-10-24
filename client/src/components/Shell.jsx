@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Bell, ChevronDown, CircleUserRound, ClipboardList, Leaf, LogOut, Menu, Plus, ShieldCheck, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, CircleUserRound, Leaf, LogOut, Menu, Plus, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 export default function Shell() {
   const { user, signOut } = useAuth();
@@ -24,6 +25,7 @@ export default function Shell() {
       <Link to="/" className="brand"><span className="brand-mark"><Leaf size={18} fill="currentColor" /></span><span>fixnear<span className="brand-light">me</span><small>NEIGHBORHOOD ACTION</small></span></Link>
       <nav className="desktop-nav" aria-label="Main navigation">{links.map((link) => <NavLink key={link.to} to={link.to} end={link.end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>{link.label}</NavLink>)}</nav>
       <div className="top-actions">{user?.role !== 'staff' && <Link to="/report/new" className="btn btn-primary nav-cta"><Plus size={16} strokeWidth={2.5} />Report an issue</Link>}
+        {['admin', 'super_admin', 'staff'].includes(user?.role) && <NotificationBell />}
         {user ? <div className="user-menu"><button className="user-chip" onClick={() => setUserOpen(!userOpen)} aria-expanded={userOpen}><span className="avatar">{user.name?.slice(0, 1).toUpperCase()}</span><span className="user-chip-copy"><b>{user.name?.split(' ')[0]}</b><small>{user.role.replace('_', ' ')}</small></span><ChevronDown size={15} /></button>{userOpen && <div className="user-dropdown"><div className="dropdown-person"><b>{user.name}</b><span>{user.email}</span></div><button onClick={logout}><LogOut size={15} />Sign out</button></div>}</div> : <Link to="/login" className="login-link">Sign in <ArrowUpRight size={15} /></Link>}
         <button className="mobile-menu" aria-label={mobileOpen ? 'Close menu' : 'Open menu'} onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X size={22} /> : <Menu size={22} />}</button>
       </div>

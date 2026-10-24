@@ -114,6 +114,14 @@ router.post('/', optionalAuthenticate, parseReportImage, asyncHandler(async (req
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.title, data.description, imageUrl, data.category, data.neighborhood, data.landmark || null, data.latitude ?? null, data.longitude ?? null, userId || null],
     );
+    const [admins] = await conn.execute("SELECT id FROM users WHERE role IN ('admin', 'super_admin') AND is_active = TRUE");
+    if (admins.length) {
+      const values = admins.map(({ id }) => [id, result.insertId, 'new_report', 'New community report', `${data.title} · ${data.neighborhood}`.slice(0, 320)]);
+      await conn.query(
+        `INSERT INTO notifications (user_id, report_id, type, title, body) VALUES ${values.map(() => '(?, ?, ?, ?, ?)').join(', ')}`,
+        values.flat(),
+      );
+    }
     await conn.execute(`INSERT INTO report_updates (report_id, user_id, old_status, new_status, old_priority, new_priority, note)
       VALUES (?, ?, NULL, 'reported', NULL, 'medium', 'Report submitted')`, [result.insertId, userId || null]);
     await conn.commit();

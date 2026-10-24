@@ -23,7 +23,7 @@ router.patch('/reports/:id', authenticate, allowRoles('admin', 'super_admin'), a
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [rows] = await conn.execute('SELECT id, category, status, priority, assigned_to, resolved_at FROM reports WHERE id = ? FOR UPDATE', [req.params.id]);
+    const [rows] = await conn.execute('SELECT id, title, category, status, priority, assigned_to, resolved_at FROM reports WHERE id = ? FOR UPDATE', [req.params.id]);
     const report = rows[0];
     if (!report) { await conn.rollback(); return res.status(404).json({ error: { code: 'REPORT_NOT_FOUND', message: 'Report not found.' } }); }
     if (body.status === 'pending_verification' && report.status !== 'pending_verification') { await conn.rollback(); return res.status(409).json({ error: { code: 'RESOLUTION_PHOTO_REQUIRED', message: 'Only a staff completion photo can move a report to verification.' } }); }
@@ -44,6 +44,12 @@ router.patch('/reports/:id', authenticate, allowRoles('admin', 'super_admin'), a
     const changed = status !== report.status || priority !== report.priority || String(newAssignee) !== String(report.assigned_to) || body.note;
     if (changed) await conn.execute(`INSERT INTO report_updates (report_id, user_id, old_status, new_status, old_priority, new_priority, old_assigned_to, new_assigned_to, note)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [report.id, req.user.id, report.status, status, report.priority, priority, report.assigned_to, newAssignee, body.note || null]);
+    if (newAssignee != null && String(newAssignee) !== String(report.assigned_to)) {
+      await conn.execute(
+        'INSERT INTO notifications (user_id, report_id, type, title, body) VALUES (?, ?, ?, ?, ?)',
+        [newAssignee, report.id, 'report_assigned', 'A report was assigned to you', report.title.slice(0, 320)],
+      );
+    }
     await conn.commit();
     res.json({ data: { id: report.id, status, priority, assigned_to: newAssignee } });
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
