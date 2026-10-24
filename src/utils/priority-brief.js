@@ -1,5 +1,5 @@
 const priorityPoints = { low: 4, medium: 12, high: 25, urgent: 40 };
-const openStatuses = new Set(['reported', 'under_review', 'in_progress']);
+const openStatuses = new Set(['reported', 'under_review', 'in_progress', 'pending_verification']);
 
 const riskSignals = [
   {

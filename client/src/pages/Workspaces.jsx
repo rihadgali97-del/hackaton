@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, ArrowRight, BadgeCheck, BriefcaseBusiness, Check, CircleAlert, ClipboardList, Plus, ShieldCheck, UsersRound } from 'lucide-react';
-import { api } from '../services/api';
+import { Activity, ArrowRight, BadgeCheck, BriefcaseBusiness, Check, CircleAlert, ClipboardList, ImagePlus, Plus, ShieldCheck, UsersRound } from 'lucide-react';
+import { api, mediaUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { EmptyState, ErrorState, InlineMessage, Loading, PageHeading, PriorityBadge, StatusBadge } from '../components/Shared';
 import { PriorityScore } from '../components/PriorityBrief';
 
-const reportStatuses = [['reported','Reported'], ['under_review','Under review'], ['in_progress','In progress'], ['resolved','Resolved'], ['rejected','Closed']];
+const reportStatuses = [['reported','Reported'], ['under_review','Under review'], ['in_progress','In progress'], ['pending_verification','Pending verification'], ['resolved','Resolved'], ['rejected','Closed']];
 const priorities = [['low','Low'], ['medium','Medium'], ['high','High'], ['urgent','Urgent']];
 
 function DashboardCharts({ reports, categories }) {
@@ -55,13 +55,32 @@ function DashboardCharts({ reports, categories }) {
   </section>;
 }
 
+function ResolutionReview({ report, onReviewed }) {
+  const [note, setNote] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  if (report.status !== 'pending_verification') return null;
+  async function decide(decision) {
+    setError('');
+    if (decision === 'request_changes' && note.trim().length < 3) { setError('Explain what needs more work.'); return; }
+    setBusy(true);
+    try {
+      await api(`/admin/reports/${report.id}/review-resolution`, { method:'PATCH', body:JSON.stringify({ decision, note:note.trim() || undefined }) });
+      onReviewed();
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+  return <div className="resolution-review"><a href={mediaUrl(report.resolution_image_url)} target="_blank" rel="noreferrer" className="resolution-photo-link"><img src={mediaUrl(report.resolution_image_url)} alt={`Completion evidence for ${report.title}`} /><span>View completion photo</span></a><textarea aria-label={`Review note for ${report.title}`} rows="2" maxLength="1000" value={note} onChange={(event)=>setNote(event.target.value)} placeholder="Required if requesting more work"/><div className="resolution-review-actions"><button className="btn btn-primary btn-sm" disabled={busy} onClick={()=>decide('approve')}>{busy?'Saving…':'Approve'}</button><button className="btn btn-secondary btn-sm" disabled={busy} onClick={()=>decide('request_changes')}>Request more work</button></div>{error&&<small className="field-error">{error}</small>}</div>;
+}
+
 function AdminRow({ report, staff, canAssign, onSaved }) {
   const [status, setStatus] = useState(report.status); const [priority, setPriority] = useState(report.priority);
   const [assigned, setAssigned] = useState(report.assigned_to ? String(report.assigned_to) : ''); const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [saved, setSaved] = useState(false);
+  useEffect(() => { setStatus(report.status); setPriority(report.priority); setAssigned(report.assigned_to ? String(report.assigned_to) : ''); setNote(''); }, [report.status, report.priority, report.assigned_to]);
   async function save() {
     setError(''); setSaved(false);
     if (status === 'rejected' && !note.trim()) { setError('Add a reason before closing this report.'); return; }
+    if (status === 'resolved' && report.status !== 'resolved') { setError('Approve the completion photo using the review controls.'); return; }
+    if (report.status === 'pending_verification' && status !== 'pending_verification') { setError('Use the review controls to approve the photo or request more work.'); return; }
     const body = { status, priority, note: note.trim() || undefined };
     if (canAssign && (assigned || null) !== (report.assigned_to ? String(report.assigned_to) : null)) body.assigned_to = assigned ? Number(assigned) : null;
     setBusy(true);
@@ -73,7 +92,16 @@ function AdminRow({ report, staff, canAssign, onSaved }) {
   const categoryStaff = staff.filter((member) => member.is_active && member.category === report.category);
   const currentStaffMismatch = report.assigned_to && !categoryStaff.some((member) => String(member.id) === String(report.assigned_to));
   const leadingReason = report.priority_brief?.reasons?.find((reason) => !reason.label.includes('selected priority'));
-  return <tr><td><Link className="admin-report-title" to={`/reports/${report.id}`}><b>{report.title}</b><small>#{String(report.id).padStart(4,'0')} · {report.neighborhood}</small></Link></td><td><StatusBadge status={report.status} /></td><td className="civic-signal-cell"><PriorityScore brief={report.priority_brief}/>{leadingReason && <small>{leadingReason.label}</small>}</td><td><span className="category-label">{report.category_name || report.category.replaceAll('_',' ')}</span></td><td>{canAssign ? <><select className="table-select" aria-label={`Assign ${report.title}`} value={assigned} onChange={(e) => setAssigned(e.target.value)}><option value="">Unassigned</option>{currentStaffMismatch && <option value={String(report.assigned_to)}>{report.assigned_to_name} · reassign</option>}{categoryStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}{!categoryStaff.length && <option value="__none" disabled>No staff for this category</option>}</select><small className="staff-category-hint">{categoryStaff.length} active {categoryStaff.length === 1 ? 'staff member' : 'staff members'} for {report.category_name || report.category.replaceAll('_',' ')}</small></> : <span className="text-sm">{report.assigned_to_name || <i className="text-muted">Unassigned</i>}</span>}</td><td><select className="table-select" aria-label={`Priority for ${report.title}`} value={priority} onChange={(e) => setPriority(e.target.value)}>{priorities.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></td><td><select className="table-select" aria-label={`Status for ${report.title}`} value={status} onChange={(e) => setStatus(e.target.value)}>{reportStatuses.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select><input className="table-note" aria-label={`Update note for ${report.title}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder={status === 'rejected' ? 'Reason required' : 'Optional update note'} />{error && <small className="field-error">{error}</small>}{saved && <small className="saved-inline"><Check size={12} /> Saved</small>}</td><td><button className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save'}</button></td></tr>;
+  return <tr>
+    <td><Link className="admin-report-title" to={`/reports/${report.id}`}><b>{report.title}</b><small>#{String(report.id).padStart(4,'0')} · {report.neighborhood}</small></Link></td>
+    <td><StatusBadge status={report.status}/><ResolutionReview report={report} onReviewed={onSaved}/></td>
+    <td className="civic-signal-cell"><PriorityScore brief={report.priority_brief}/>{leadingReason && <small>{leadingReason.label}</small>}</td>
+    <td><span className="category-label">{report.category_name || report.category.replaceAll('_',' ')}</span></td>
+    <td>{canAssign ? <><select className="table-select" aria-label={`Assign ${report.title}`} value={assigned} onChange={(e) => setAssigned(e.target.value)}><option value="">Unassigned</option>{currentStaffMismatch && <option value={String(report.assigned_to)}>{report.assigned_to_name} · reassign</option>}{categoryStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}{!categoryStaff.length && <option value="__none" disabled>No staff for this category</option>}</select><small className="staff-category-hint">{categoryStaff.length} active {categoryStaff.length === 1 ? 'staff member' : 'staff members'} for {report.category_name || report.category.replaceAll('_',' ')}</small></> : <span className="text-sm">{report.assigned_to_name || <i className="text-muted">Unassigned</i>}</span>}</td>
+    <td><select className="table-select" aria-label={`Priority for ${report.title}`} value={priority} onChange={(e) => setPriority(e.target.value)}>{priorities.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></td>
+    <td><select className="table-select" aria-label={`Status for ${report.title}`} value={status} onChange={(e) => setStatus(e.target.value)}>{reportStatuses.map(([v,l]) => <option key={v} value={v} disabled={(v === 'pending_verification' && report.status !== v) || (v === 'resolved' && report.status !== v)}>{l}</option>)}</select><input className="table-note" aria-label={`Update note for ${report.title}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder={status === 'rejected' ? 'Reason required' : 'Optional update note'} />{error && <small className="field-error">{error}</small>}{saved && <small className="saved-inline"><Check size={12} /> Saved</small>}</td>
+    <td><button className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save'}</button></td>
+  </tr>;
 }
 
 function StaffManager({ reloadKey, onChange, categories, canDeactivate }) {
@@ -145,23 +173,57 @@ export function AdminWorkspace() {
     {loading ? <Loading label="Gathering community activity…" /> : error ? <ErrorState message={error} onRetry={load} /> : <>
       <div className="metric-grid admin-metrics">{metrics.map(({label,value,icon:Icon})=><div className="metric-card" key={label}><span className="metric-icon"><Icon size={18} /></span><span className="metric-number">{value}</span><span className="metric-label">{label}</span></div>)}</div>
       <DashboardCharts reports={reports} categories={categories} />
-      <section className="admin-table-section"><div className="admin-table-heading"><div><p className="eyebrow">THE COMMUNITY QUEUE</p><h2>Reports that need a response</h2><p>Reports are ranked by their explainable civic signal.</p></div><label className="admin-filter">Show<select value={filter} onChange={(e)=>setFilter(e.target.value)}><option value="all">All reports</option><option value="high_signal">High civic signal</option><option value="open">Open reports</option><option value="reported">Reported</option><option value="under_review">Under review</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="rejected">Closed</option></select></label></div>
+      <section className="admin-table-section"><div className="admin-table-heading"><div><p className="eyebrow">THE COMMUNITY QUEUE</p><h2>Reports that need a response</h2><p>Reports are ranked by their explainable civic signal.</p></div><label className="admin-filter">Show<select value={filter} onChange={(e)=>setFilter(e.target.value)}><option value="all">All reports</option><option value="high_signal">High civic signal</option><option value="open">Open reports</option><option value="reported">Reported</option><option value="under_review">Under review</option><option value="in_progress">In progress</option><option value="pending_verification">Pending verification</option><option value="resolved">Resolved</option><option value="rejected">Closed</option></select></label></div>
         {visible.length ? <div className="table-overflow"><table className="admin-table"><thead><tr><th>Report</th><th>Current status</th><th>Civic signal</th><th>Category</th><th>{isSuper?'Assign staff':'Assigned staff'}</th><th>Priority</th><th>Update status / note</th><th></th></tr></thead><tbody>{visible.map((r)=><AdminRow key={r.id} report={r} staff={staff} canAssign={isSuper} onSaved={()=>setReloadKey((n)=>n+1)} />)}</tbody></table></div> : <EmptyState title="No reports in this view" text="Try another filter or check back when a new issue is reported." />}</section>
-      <CategoryManager reloadKey={reloadKey} onChange={()=>setReloadKey((n)=>n+1)} />
-      <StaffManager reloadKey={reloadKey} onChange={()=>setReloadKey((n)=>n+1)} categories={categories} canDeactivate={isSuper} />
     </>}
   </div>;
 }
 
+export function AdminCategoriesWorkspace() {
+  const { user } = useAuth();
+  const isSuper = user?.role === 'super_admin';
+  return <div className="content-page workspace-page"><PageHeading eyebrow="ADMIN WORKSPACE" title="Report categories" description="Create and maintain the categories residents use to classify local problems." action={<span className="workspace-role"><ShieldCheck size={15}/>{isSuper ? 'Super admin' : 'Administrator'}</span>} /><CategoryManager reloadKey={0} onChange={()=>{}} /></div>;
+}
+
+export function AdminStaffWorkspace() {
+  const { user } = useAuth();
+  const isSuper = user?.role === 'super_admin';
+  const [categories, setCategories] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+  async function loadCategories() { setLoading(true); setError(''); try { const response = await api('/admin/categories'); setCategories(response.data); } catch (e) { setError(e.message); } finally { setLoading(false); } }
+  useEffect(() => { loadCategories(); }, []);
+  return <div className="content-page workspace-page"><PageHeading eyebrow="ADMIN WORKSPACE" title="Staff management" description="Create category-specialized staff accounts and review their current workloads." action={<span className="workspace-role"><ShieldCheck size={15}/>{isSuper ? 'Super admin' : 'Administrator'}</span>} />{loading ? <Loading label="Loading active staff categories…"/> : error ? <ErrorState message={error} onRetry={loadCategories}/> : <StaffManager reloadKey={0} onChange={()=>{}} categories={categories} canDeactivate={isSuper}/>}</div>;
+}
+
 export function StaffWorkspace() {
-  const [reports,setReports] = useState([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [notes,setNotes]=useState({}); const [busy,setBusy]=useState(null); const [notice,setNotice]=useState(null);
+  const [reports,setReports] = useState([]); const [loading,setLoading]=useState(true); const [error,setError]=useState('');
+  const [notes,setNotes]=useState({}); const [proofs,setProofs]=useState({}); const [proofErrors,setProofErrors]=useState({}); const [busy,setBusy]=useState(null); const [notice,setNotice]=useState(null);
   async function load() { setLoading(true); setError(''); try { const r=await api('/reports/staff/assigned'); setReports(r.data); } catch(e) {setError(e.message);} finally {setLoading(false);} }
   useEffect(()=>{load();},[]);
-  async function update(report,status) {setBusy(report.id);setNotice(null);try{await api(`/reports/staff/reports/${report.id}`,{method:'PATCH',body:JSON.stringify({status,note:notes[report.id]||undefined})});setNotice({type:'success',text:`“${report.title}” updated.`});setNotes((n)=>({...n,[report.id]:''}));await load();}catch(e){setNotice({type:'error',text:e.message});}finally{setBusy(null);}}
-  const open=reports.filter((r)=>!['resolved','rejected'].includes(r.status));
-  return <div className="content-page workspace-page"><PageHeading eyebrow="YOUR WORK QUEUE" title="The next good fix starts here." description="Here are the reports assigned to you. Share a clear update as the work moves forward." action={<span className="workspace-role"><BriefcaseBusiness size={15} /> Staff view</span>} />
-    <div className="metric-grid staff-metrics"><div className="metric-card"><span className="metric-icon"><ClipboardList size={18}/></span><span className="metric-number">{reports.length}</span><span className="metric-label">Assigned to you</span></div><div className="metric-card"><span className="metric-icon"><CircleAlert size={18}/></span><span className="metric-number">{open.length}</span><span className="metric-label">Still in progress</span></div><div className="metric-card"><span className="metric-icon"><BadgeCheck size={18}/></span><span className="metric-number">{reports.filter((r)=>r.status==='resolved').length}</span><span className="metric-label">Resolved by you</span></div></div>
+  function chooseProof(reportId, file) {
+    setProofErrors((old)=>({...old,[reportId]:''}));
+    if (!file) { setProofs((old)=>({...old,[reportId]:null})); return; }
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { setProofs((old)=>({...old,[reportId]:null})); setProofErrors((old)=>({...old,[reportId]:'Choose a JPEG, PNG, or WebP photo.'})); return; }
+    if (file.size > 5 * 1024 * 1024) { setProofs((old)=>({...old,[reportId]:null})); setProofErrors((old)=>({...old,[reportId]:'The photo must be 5 MB or smaller.'})); return; }
+    setProofs((old)=>({...old,[reportId]:file}));
+  }
+  async function update(report,status) {
+    setBusy(report.id); setNotice(null); setProofErrors((old)=>({...old,[report.id]:''}));
+    if (status === 'resolved' && !proofs[report.id]) { setProofErrors((old)=>({...old,[report.id]:'Add a completion photo before requesting approval.'})); setBusy(null); return; }
+    try {
+      let body;
+      if (status === 'resolved') {
+        body = new FormData(); body.append('status',status); body.append('image',proofs[report.id]);
+        if (notes[report.id]?.trim()) body.append('note',notes[report.id].trim());
+      } else body = JSON.stringify({status,note:notes[report.id]?.trim()||undefined});
+      await api(`/reports/staff/reports/${report.id}`,{method:'PATCH',body});
+      setNotice({type:'success',text:status==='resolved'?`Completion photo sent to an admin for approval.`:`“${report.title}” updated.`});
+      setNotes((old)=>({...old,[report.id]:''})); setProofs((old)=>({...old,[report.id]:null})); await load();
+    } catch(e) {setNotice({type:'error',text:e.message});} finally {setBusy(null);}
+  }
+  const pending=reports.filter((r)=>r.status==='pending_verification').length;
+  return <div className="content-page workspace-page"><PageHeading eyebrow="YOUR WORK QUEUE" title="The next good fix starts here." description="You can only view and update reports assigned to your staff account. Upload a completion photo to request resolution." action={<span className="workspace-role"><BriefcaseBusiness size={15} /> Staff view</span>} />
+    <div className="metric-grid staff-metrics"><div className="metric-card"><span className="metric-icon"><ClipboardList size={18}/></span><span className="metric-number">{reports.length}</span><span className="metric-label">Assigned to you</span></div><div className="metric-card"><span className="metric-icon"><CircleAlert size={18}/></span><span className="metric-number">{reports.filter((r)=>r.status==='in_progress').length}</span><span className="metric-label">In progress</span></div><div className="metric-card"><span className="metric-icon"><ImagePlus size={18}/></span><span className="metric-number">{pending}</span><span className="metric-label">Awaiting review</span></div><div className="metric-card"><span className="metric-icon"><BadgeCheck size={18}/></span><span className="metric-number">{reports.filter((r)=>r.status==='resolved').length}</span><span className="metric-label">Approved fixes</span></div></div>
     <section className="staff-work-section"><div className="admin-table-heading"><div><p className="eyebrow">YOUR ASSIGNED REPORTS</p><h2>Work on the block</h2><p>Urgent and older reports are shown first.</p></div></div>{notice&&<InlineMessage type={notice.type}>{notice.text}</InlineMessage>}
-      {loading?<Loading label="Loading your assignments…"/>:error?<ErrorState message={error} onRetry={load}/>:reports.length?<div className="staff-work-list">{reports.map((r)=><article className="staff-work-card" key={r.id}><div className="staff-work-main"><div className="detail-topline"><span className="category-label">{r.category_name || r.category.replaceAll('_',' ')}</span><PriorityBadge priority={r.priority}/><StatusBadge status={r.status}/></div><Link to={`/reports/${r.id}`} className="staff-work-title">{r.title}<ArrowRight size={16}/></Link><p>{r.description}</p><div className="detail-meta"><span>{r.neighborhood}{r.landmark?` · ${r.landmark}`:''}</span><span>#{String(r.id).padStart(4,'0')}</span></div></div>{!['resolved','rejected'].includes(r.status)&&<div className="staff-work-actions"><label className="field">Update note <span className="optional">OPTIONAL</span><textarea rows="2" maxLength="1000" value={notes[r.id]||''} onChange={(e)=>setNotes((n)=>({...n,[r.id]:e.target.value}))} placeholder="What did you do? What happens next?" /></label><div className="staff-button-row">{r.status!=='in_progress'&&<button className="btn btn-secondary" disabled={busy===r.id} onClick={()=>update(r,'in_progress')}>Mark in progress</button>}<button className="btn btn-primary" disabled={busy===r.id} onClick={()=>update(r,'resolved')}>{busy===r.id?'Saving…':<><Check size={15}/> Mark resolved</>}</button></div></div>}</article>)}</div>:<EmptyState title="No reports assigned yet" text="When a super admin assigns work to you, it will appear here."/>}</section>
+      {loading?<Loading label="Loading your assignments…"/>:error?<ErrorState message={error} onRetry={load}/>:reports.length?<div className="staff-work-list">{reports.map((r)=><article className="staff-work-card" key={r.id}><div className="staff-work-main"><div className="detail-topline"><span className="category-label">{r.category_name || r.category.replaceAll('_',' ')}</span><PriorityBadge priority={r.priority}/><StatusBadge status={r.status}/></div><Link to={`/reports/${r.id}`} className="staff-work-title">{r.title}<ArrowRight size={16}/></Link><p>{r.description}</p><div className="detail-meta"><span>{r.neighborhood}{r.landmark?` · ${r.landmark}`:''}</span><span>#{String(r.id).padStart(4,'0')}</span></div></div>{r.status==='pending_verification'?<div className="staff-awaiting-review"><ImagePlus size={17}/><span>Your completion photo is waiting for admin approval.</span></div>:!['resolved','rejected'].includes(r.status)&&<div className="staff-work-actions"><label className="field">Update note <span className="optional">OPTIONAL</span><textarea rows="2" maxLength="1000" value={notes[r.id]||''} onChange={(e)=>setNotes((n)=>({...n,[r.id]:e.target.value}))} placeholder="What did you do? What happens next?" /></label><label className="field completion-photo-field">Completion photo <span className="required">REQUIRED TO REQUEST RESOLUTION</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e)=>chooseProof(r.id,e.target.files?.[0])}/><small className="field-hint">JPEG, PNG, or WebP · up to 5 MB{proofs[r.id]?` · Selected: ${proofs[r.id].name}`:''}</small>{proofErrors[r.id]&&<small className="field-error">{proofErrors[r.id]}</small>}</label><div className="staff-button-row">{r.status!=='in_progress'&&<button className="btn btn-secondary" disabled={busy===r.id} onClick={()=>update(r,'in_progress')}>Mark in progress</button>}<button className="btn btn-primary" disabled={busy===r.id} onClick={()=>update(r,'resolved')}>{busy===r.id?'Submitting…':<><Check size={15}/> Submit for approval</>}</button></div></div>}</article>)}</div>:<EmptyState title="No reports assigned yet" text="Reports assigned to you will appear here."/>}</section>
   </div>;
 }

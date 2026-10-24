@@ -8,10 +8,11 @@ const statusColors = {
   reported: '#d39b23',
   under_review: '#9274b8',
   in_progress: '#4384b7',
+  pending_verification: '#ba8452',
   resolved: '#4a9562',
   rejected: '#849087',
 };
-const statusLabels = { reported: 'Reported', under_review: 'Under review', in_progress: 'In progress', resolved: 'Resolved', rejected: 'Closed' };
+const statusLabels = { reported: 'Reported', under_review: 'Under review', in_progress: 'In progress', pending_verification: 'Pending verification', resolved: 'Resolved', rejected: 'Closed' };
 
 function MapContent({ reports, onPick, selectedLocation }) {
   const map = useMap();

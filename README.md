@@ -34,8 +34,8 @@ To reset an existing super-admin password, set `SUPER_ADMIN_EMAIL` and `SUPER_AD
 ## Roles
 
 - **Resident:** register, sign in, submit and confirm reports.
-- **Staff:** see reports assigned to them and change their assigned report to `in_progress` or `resolved`, with an optional update note.
-- **Admin:** review all reports, manage report categories, create staff accounts for a selected category, and change report status, priority, and notes.
+- **Staff:** see only reports assigned to them, add work notes, and submit a completion photo for admin review.
+- **Admin:** review all reports, approve or return completion photos, manage report categories, create staff accounts for a selected category, and change report priority and notes.
 - **Super admin:** all admin capabilities, deactivate staff accounts, and assign or unassign staff on reports. Each staff account belongs to one category.
 
 Registration always creates a resident. The only initial super admin is created through the one-time local bootstrap script. Tokens are signed JWTs; each request reloads the active role from MySQL so deactivated accounts lose access immediately.
@@ -52,25 +52,27 @@ All endpoints use `/api`. Protected routes accept `Authorization: Bearer <token>
 | `GET /auth/me` | Signed in | Current account |
 | `GET /reports` | Public | Search (`search`), filters, `page`, `limit` |
 | `GET /reports/:id` | Public | Report details |
+| `GET /reports/:id/updates` | Public | Report history; staff can read history only for assigned reports |
 | `POST /reports` | Public or signed in | Submit a report with optional `image` upload |
 | `POST /reports/check-duplicates` | Public | Rule-based suggestions; does not merge or alter reports |
 | `POST /reports/:id/confirm` | Signed in | Confirm a report once per account |
 | `GET /reports/:id/updates` | Public | Chronological status, priority, assignment, and note history |
 | `GET /dashboard/stats` | Public | Counts by status/category, urgent/unassigned totals, recent reports |
 | `GET /admin/reports` | Admin, super admin | All reports for administration |
-| `PATCH /admin/reports/:id` | Admin, super admin | Update status/priority/note; assignment fields are super-admin only |
+| `PATCH /admin/reports/:id` | Admin, super admin | Update priority/note and status; assignment fields are super-admin only. Resolution must use the review route |
+| `PATCH /admin/reports/:id/review-resolution` | Admin, super admin | Approve a staff completion photo (`decision: approve`) or request more work (`decision: request_changes`, with a reason) |
 | `GET /admin/categories` | Admin, super admin | List categories with report/staff counts |
 | `POST /admin/categories` | Admin, super admin | Create a category (`name`, optional `description`); its key is generated from its name |
 | `PATCH /admin/categories/:slug` | Admin, super admin | Edit a category name/description or restore an archived category |
 | `DELETE /admin/categories/:slug` | Admin, super admin | Archive a category while preserving report history |
 | `GET /categories` | Public | List active categories used by report submission and filters |
-| `GET /reports/staff/assigned` | Staff | Current staff member's assigned work |
-| `PATCH /reports/staff/reports/:id` | Assigned staff | Set `in_progress` or `resolved`, add note |
+| `GET /reports/staff/assigned` | Staff | Current staff member's assigned work only |
+| `PATCH /reports/staff/reports/:id` | Assigned staff | Set `in_progress` or submit `resolved` with a required `image` file; the report becomes `pending_verification` |
 | `GET /admin/staff` | Admin, super admin | Staff list and workload |
 | `POST /admin/staff` | Admin, super admin | Create staff (`name`, `email`, `password`, minimum 12 chars, and active `category` key) |
 | `PATCH /admin/staff/:id` | Super admin | Activate/deactivate staff (`is_active`) |
 
-Categories are managed by admins. New reports can use active categories only. Category keys remain stable if the display name changes; archived categories stay attached to historical reports and can be restored. Super admins can assign a report only to active staff in that report's category; the admin screen filters the staff list accordingly, and the API enforces the same rule. Statuses: `reported`, `under_review`, `in_progress`, `resolved`, `rejected`. Priorities: `low`, `medium`, `high`, `urgent`.
+Categories are managed by admins. New reports can use active categories only. Category keys remain stable if the display name changes; archived categories stay attached to historical reports and can be restored. Super admins can assign a report only to active staff in that report's category; the admin screen filters the staff list accordingly, and the API enforces the same rule. Staff report lists, detail endpoints, and history are scoped to the signed-in staff member's assigned reports. Statuses: `reported`, `under_review`, `in_progress`, `pending_verification`, `resolved`, `rejected`. A staff completion submission remains `pending_verification` until an admin approves its photo; requesting changes returns it to `in_progress`. Only approved completion photos are shown as resolved proof to the community. Priorities: `low`, `medium`, `high`, `urgent`.
 
 Report submission accepts `multipart/form-data`; use `image` for one optional JPEG, PNG, or WebP file up to 5 MB. The API checks the file signature, creates a random server-side filename, stores it under the ignored local `uploads/` directory, and returns its public `image_url`. Uploaded images are displayed on report details. Apply migration `002_report_image.sql` with `npm run migrate` before using image uploads. Local filesystem uploads suit development; use durable object storage for production deployments.
 
@@ -120,4 +122,4 @@ Content-Type: application/json
 - In the client, submit valid and invalid forms, use duplicate suggestions, search/filter/paginate, inspect report history, reject with and without a reason, and retry after stopping the API. Failed requests should show an error and keep the form values.
 - Resize to mobile and desktop widths; verify menus, forms, report cards, tables, keyboard focus, and status feedback remain usable.
 
-MySQL integration checks require a configured local database and are not part of the isolated unit tests.
+MySQL integration checks require a configured local database and are not part of the isolated unit tests. Apply migration `004_resolution_photo_review.sql` with `npm run migrate` before using completion-photo review.

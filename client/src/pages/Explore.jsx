@@ -4,10 +4,12 @@ import { ArrowRight, Filter, LayoutGrid, Map as MapIcon, Search, SlidersHorizont
 import { api } from '../services/api';
 import { EmptyState, ErrorState, Loading, PageHeading, ReportCard } from '../components/Shared';
 import ReportMap, { statusColors, statusLabels } from '../components/ReportMap';
+import { useAuth } from '../context/AuthContext';
 
-const statuses = [['', 'All statuses'], ['reported', 'Reported'], ['under_review', 'Under review'], ['in_progress', 'In progress'], ['resolved', 'Resolved'], ['rejected', 'Closed']];
+const statuses = [['', 'All statuses'], ['reported', 'Reported'], ['under_review', 'Under review'], ['in_progress', 'In progress'], ['pending_verification', 'Pending verification'], ['resolved', 'Resolved'], ['rejected', 'Closed']];
 
 export default function Explore() {
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const [categories, setCategories] = useState([]); const [categoryError, setCategoryError] = useState('');
   const [search, setSearch] = useState(params.get('search') || '');
@@ -34,7 +36,7 @@ export default function Explore() {
   const mappedCount = data.filter((report) => report.latitude != null && report.longitude != null).length;
   const hasFilter = Boolean(search || Object.values(filters).some(Boolean));
   return <div className="content-page">
-    <PageHeading eyebrow="COMMUNITY ACTIVITY" title="Explore reports" description="See what your neighbors are reporting and follow the work as it gets done." action={<Link to="/report/new" className="btn btn-primary"><span>+</span> New report</Link>} />
+    <PageHeading eyebrow="COMMUNITY ACTIVITY" title="Explore reports" description="See what your neighbors are reporting and follow the work as it gets done." action={user?.role !== 'staff' && <Link to="/report/new" className="btn btn-primary"><span>+</span> New report</Link>} />
     <form className="filter-panel" onSubmit={submit}>
       <label className="search-field"><Search size={18} /><input aria-label="Search reports" placeholder="Search reports, places, or details…" value={search} onChange={(e) => setSearch(e.target.value)} /><button type="submit" className="btn btn-primary search-submit">Search</button></label>
       <div className="filters-row"><span className="filter-label"><SlidersHorizontal size={14} /> FILTER BY</span>

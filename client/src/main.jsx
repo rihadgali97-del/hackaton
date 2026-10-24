@@ -8,7 +8,7 @@ import Explore from './pages/Explore';
 import NewReport from './pages/NewReport';
 import ReportDetail from './pages/ReportDetail';
 import Login from './pages/Login';
-import { AdminWorkspace, StaffWorkspace } from './pages/Workspaces';
+import { AdminCategoriesWorkspace, AdminStaffWorkspace, AdminWorkspace, StaffWorkspace } from './pages/Workspaces';
 import { Loading } from './components/Shared';
 import 'leaflet/dist/leaflet.css';
 import './index.css';
@@ -18,6 +18,11 @@ function LoginGate() {
   if (!ready) return <div className="page-loading"><Loading label="Getting your account ready…" /></div>;
   if (user) return <Navigate to={user.role === 'staff' ? '/staff' : ['admin','super_admin'].includes(user.role) ? '/admin' : '/'} replace />;
   return <Login />;
+}
+
+function ReportSubmission() {
+  const { user } = useAuth();
+  return user?.role === 'staff' ? <Navigate to="/staff" replace /> : <NewReport />;
 }
 
 function Protected({ roles, children }) {
@@ -34,8 +39,10 @@ function App() {
   const { ready } = useAuth();
   if (!ready) return <div className="page-loading"><Loading label="Starting FixNearMe…" /></div>;
   return <Routes><Route element={<Shell />}>
-    <Route index element={<Home />} /><Route path="reports" element={<Explore />} /><Route path="reports/:id" element={<ReportDetail />} /><Route path="report/new" element={<NewReport />} />
+    <Route index element={<Home />} /><Route path="reports" element={<Explore />} /><Route path="reports/:id" element={<ReportDetail />} /><Route path="report/new" element={<ReportSubmission />} />
     <Route path="admin" element={<Protected roles={['admin','super_admin']}><AdminWorkspace /></Protected>} />
+    <Route path="admin/categories" element={<Protected roles={['admin','super_admin']}><AdminCategoriesWorkspace /></Protected>} />
+    <Route path="admin/staff" element={<Protected roles={['admin','super_admin']}><AdminStaffWorkspace /></Protected>} />
     <Route path="staff" element={<Protected roles={['staff']}><StaffWorkspace /></Protected>} />
     <Route path="*" element={<NotFound />} />
   </Route><Route path="/login" element={<LoginGate />} /><Route path="/register" element={<Navigate to="/login?mode=register" replace />} /></Routes>;

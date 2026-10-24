@@ -8,7 +8,7 @@ const { addPriorityBrief } = require('../utils/priority-brief');
 
 const router = express.Router();
 const reportColumns = `r.id, r.title, r.description, r.category, r.neighborhood, r.landmark,
-  r.image_url, r.latitude, r.longitude, r.status, r.priority, r.assigned_to, r.created_at, r.updated_at, r.resolved_at,
+  r.image_url, r.resolution_image_url, r.latitude, r.longitude, r.status, r.priority, r.assigned_to, r.created_at, r.updated_at, r.resolved_at,
   cat.name AS category_name, assignee.name AS assigned_to_name,
   (SELECT COUNT(*) FROM report_confirmations c WHERE c.report_id = r.id) AS confirmations`;
 
@@ -26,6 +26,9 @@ router.patch('/reports/:id', authenticate, allowRoles('admin', 'super_admin'), a
     const [rows] = await conn.execute('SELECT id, category, status, priority, assigned_to, resolved_at FROM reports WHERE id = ? FOR UPDATE', [req.params.id]);
     const report = rows[0];
     if (!report) { await conn.rollback(); return res.status(404).json({ error: { code: 'REPORT_NOT_FOUND', message: 'Report not found.' } }); }
+    if (body.status === 'pending_verification' && report.status !== 'pending_verification') { await conn.rollback(); return res.status(409).json({ error: { code: 'RESOLUTION_PHOTO_REQUIRED', message: 'Only a staff completion photo can move a report to verification.' } }); }
+    if (body.status === 'resolved' && report.status !== 'resolved') { await conn.rollback(); return res.status(409).json({ error: { code: 'RESOLUTION_REVIEW_REQUIRED', message: 'Approve a staff completion photo in the review controls before resolving this report.' } }); }
+    if (report.status === 'pending_verification' && body.status && body.status !== 'pending_verification') { await conn.rollback(); return res.status(409).json({ error: { code: 'RESOLUTION_REVIEW_REQUIRED', message: 'Use the resolution review controls to approve the photo or request more work.' } }); }
     let newAssignee = report.assigned_to;
     if ('assigned_to' in body) {
       newAssignee = body.assigned_to;
@@ -43,6 +46,34 @@ router.patch('/reports/:id', authenticate, allowRoles('admin', 'super_admin'), a
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [report.id, req.user.id, report.status, status, report.priority, priority, report.assigned_to, newAssignee, body.note || null]);
     await conn.commit();
     res.json({ data: { id: report.id, status, priority, assigned_to: newAssignee } });
+  } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+}));
+
+router.patch('/reports/:id/review-resolution', authenticate, allowRoles('admin', 'super_admin'), asyncHandler(async (req, res) => {
+  const body = z.object({
+    decision: z.enum(['approve', 'request_changes']),
+    note: z.string().trim().max(1000).optional(),
+  }).refine((value) => value.decision !== 'request_changes' || Boolean(value.note?.length >= 3), {
+    message: 'Add a short note explaining what needs more work.', path: ['note'],
+  }).parse(req.body);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.execute('SELECT id, status, priority, assigned_to, resolution_image_url FROM reports WHERE id = ? FOR UPDATE', [req.params.id]);
+    const report = rows[0];
+    if (!report) { await conn.rollback(); return res.status(404).json({ error: { code: 'REPORT_NOT_FOUND', message: 'Report not found.' } }); }
+    if (report.status !== 'pending_verification' || !report.resolution_image_url) {
+      await conn.rollback();
+      return res.status(409).json({ error: { code: 'NO_RESOLUTION_PENDING', message: 'This report has no completion photo awaiting review.' } });
+    }
+    const approved = body.decision === 'approve';
+    const status = approved ? 'resolved' : 'in_progress';
+    const note = body.note || (approved ? 'Admin approved the completion photo.' : null);
+    await conn.execute('UPDATE reports SET status = ?, resolved_at = ?, resolution_image_url = ? WHERE id = ?', [status, approved ? new Date() : null, approved ? report.resolution_image_url : null, report.id]);
+    await conn.execute(`INSERT INTO report_updates (report_id, user_id, old_status, new_status, old_priority, new_priority, old_assigned_to, new_assigned_to, note, image_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [report.id, req.user.id, report.status, status, report.priority, report.priority, report.assigned_to, report.assigned_to, note, approved ? report.resolution_image_url : null]);
+    await conn.commit();
+    res.json({ data: { id: report.id, status, approved } });
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }));
 

@@ -3,6 +3,7 @@ import { AlertCircle, ArrowRight, CheckCircle2, Clock3, LoaderCircle, MapPin, Me
 
 const statuses = {
   reported: ['Reported', 'badge-slate'], under_review: ['Under review', 'badge-amber'],
+  pending_verification: ['Pending verification', 'badge-amber'],
   in_progress: ['In progress', 'badge-blue'], resolved: ['Resolved', 'badge-green'], rejected: ['Closed', 'badge-red'],
 };
 
