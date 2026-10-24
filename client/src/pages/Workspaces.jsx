@@ -1,12 +1,58 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BadgeCheck, BriefcaseBusiness, Check, CircleAlert, ClipboardList, Plus, ShieldCheck, UserRoundCog, UsersRound } from 'lucide-react';
+import { Activity, ArrowRight, BadgeCheck, BriefcaseBusiness, Check, CircleAlert, ClipboardList, Plus, ShieldCheck, UsersRound } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { EmptyState, ErrorState, InlineMessage, Loading, PageHeading, PriorityBadge, StatusBadge } from '../components/Shared';
 
 const reportStatuses = [['reported','Reported'], ['under_review','Under review'], ['in_progress','In progress'], ['resolved','Resolved'], ['rejected','Closed']];
 const priorities = [['low','Low'], ['medium','Medium'], ['high','High'], ['urgent','Urgent']];
+
+function DashboardCharts({ reports, categories }) {
+  const today = new Date();
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    date.setHours(0, 0, 0, 0);
+    const next = new Date(date);
+    next.setDate(date.getDate() + 1);
+    return {
+      date,
+      label: date.toLocaleDateString(undefined, { weekday: 'short' }),
+      count: reports.filter((report) => {
+        const created = new Date(report.created_at);
+        return created >= date && created < next;
+      }).length,
+    };
+  });
+  const maxDaily = Math.max(...days.map((day) => day.count), 1);
+  const points = days.map((day, index) => ({ x: 36 + index * 76, y: 132 - (day.count / maxDaily) * 100, ...day }));
+  const line = points.map(({ x, y }, index) => `${index ? 'L' : 'M'} ${x} ${y}`).join(' ');
+  const area = `${line} L ${points.at(-1).x} 142 L ${points[0].x} 142 Z`;
+  const categoryCounts = categories.map((category) => ({
+    ...category,
+    count: reports.filter((report) => report.category === category.slug).length,
+  })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const maxCategory = Math.max(...categoryCounts.map((category) => category.count), 1);
+
+  return <section className="dashboard-charts" aria-label="Report analytics">
+    <article className="dashboard-chart-card trend-chart">
+      <div className="chart-card-heading"><div><span className="chart-icon"><Activity size={16}/></span><div><p className="eyebrow">REPORT ACTIVITY</p><h2>New reports</h2></div></div><span className="chart-period">Last 7 days</span></div>
+      <div className="chart-total"><strong>{days.reduce((sum, day) => sum + day.count, 0)}</strong><span>reports submitted</span></div>
+      <svg className="trend-svg" viewBox="0 0 528 176" role="img" aria-label={`New reports over the last seven days: ${days.map((day) => `${day.label} ${day.count}`).join(', ')}`}>
+        <defs><linearGradient id="reportTrendFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#8fbd98" stopOpacity=".38"/><stop offset="100%" stopColor="#e9f3ea" stopOpacity=".12"/></linearGradient></defs>
+        {[32, 82, 132].map((y) => <line key={y} x1="34" x2="526" y1={y} y2={y} className="chart-grid-line"/>)}
+        <path d={area} className="trend-area"/><path d={line} className="trend-line"/>
+        {points.map((point) => <g key={point.label + point.date.toISOString()}><circle cx={point.x} cy={point.y} r="4" className="trend-dot"/><text x={point.x} y="164" textAnchor="middle" className="chart-axis-label">{point.label}</text><text x={point.x} y={point.y - 11} textAnchor="middle" className="chart-value-label">{point.count}</text></g>)}
+      </svg>
+    </article>
+    <article className="dashboard-chart-card category-chart">
+      <div className="chart-card-heading"><div><span className="chart-icon"><ClipboardList size={16}/></span><div><p className="eyebrow">WHERE HELP IS NEEDED</p><h2>Reports by category</h2></div></div><span className="chart-period">{reports.length} total</span></div>
+      {categoryCounts.length ? <div className="category-bars">{categoryCounts.slice(0, 7).map((category, index) => <div className="category-bar-row" key={category.slug}><div className="category-bar-label"><span>{category.name}</span><b>{category.count}</b></div><div className="category-bar-track"><span className={`category-bar-fill category-color-${index % 6}`} style={{ width: `${category.count ? Math.max(4, (category.count / maxCategory) * 100) : 0}%` }}/></div></div>)}</div> : <div className="chart-empty">Add categories to see the report breakdown.</div>}
+      <p className="chart-footnote">Includes open and completed reports.</p>
+    </article>
+  </section>;
+}
 
 function AdminRow({ report, staff, canAssign, onSaved }) {
   const [status, setStatus] = useState(report.status); const [priority, setPriority] = useState(report.priority);
@@ -95,6 +141,7 @@ export function AdminWorkspace() {
   return <div className="content-page workspace-page"><PageHeading eyebrow={isSuper ? 'SUPER ADMIN WORKSPACE' : 'ADMIN WORKSPACE'} title="Keep good work moving." description={isSuper ? 'Review community reports, coordinate your staff, and make sure every issue has an owner.' : 'Review community reports and keep each update clear and accountable.'} action={<span className="workspace-role"><ShieldCheck size={15} />{isSuper ? 'Super admin' : 'Administrator'}</span>} />
     {loading ? <Loading label="Gathering community activity…" /> : error ? <ErrorState message={error} onRetry={load} /> : <>
       <div className="metric-grid">{metrics.map(({label,value,icon:Icon})=><div className="metric-card" key={label}><span className="metric-icon"><Icon size={18} /></span><span className="metric-number">{value}</span><span className="metric-label">{label}</span></div>)}</div>
+      <DashboardCharts reports={reports} categories={categories} />
       <section className="admin-table-section"><div className="admin-table-heading"><div><p className="eyebrow">THE COMMUNITY QUEUE</p><h2>Reports that need a response</h2><p>Assign ownership, set priority, and keep neighbors in the loop.</p></div><label className="admin-filter">Show<select value={filter} onChange={(e)=>setFilter(e.target.value)}><option value="all">All reports</option><option value="open">Open reports</option><option value="reported">Reported</option><option value="under_review">Under review</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="rejected">Closed</option></select></label></div>
         {visible.length ? <div className="table-overflow"><table className="admin-table"><thead><tr><th>Report</th><th>Current status</th><th>Category</th><th>{isSuper?'Assign staff':'Assigned staff'}</th><th>Priority</th><th>Update status / note</th><th></th></tr></thead><tbody>{visible.map((r)=><AdminRow key={r.id} report={r} staff={staff} canAssign={isSuper} onSaved={()=>setReloadKey((n)=>n+1)} />)}</tbody></table></div> : <EmptyState title="No reports in this view" text="Try another filter or check back when a new issue is reported." />}</section>
       <CategoryManager reloadKey={reloadKey} onChange={()=>setReloadKey((n)=>n+1)} />
