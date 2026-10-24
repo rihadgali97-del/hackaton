@@ -128,6 +128,9 @@ h1,h2,h3,h4 { font-family: 'Manrope','DM Sans',sans-serif; letter-spacing: -.04e
 .locate-button { min-height:34px; gap:6px; font-size:9px; }
 .location-message { display:block; margin:8px 0; color:#587660; font-size:9px; line-height:1.5; }
 .map-picker-instruction { margin:14px 0 8px; color:#7f8c82; font-size:9px; }
+.location-panel { display:grid; gap:10px; margin-top:4px; padding:14px; border:1px solid #dfe9df; border-radius:8px; background:#f8fbf7; }
+.location-panel-heading { display:flex; align-items:flex-start; gap:9px; }.location-panel-icon { display:grid; place-items:center; width:32px; height:32px; flex:0 0 auto; color:#397653; background:#eaf3eb; border-radius:8px; }.location-panel-heading h3 { margin:0 0 3px; color:#31543c; font-size:12px; letter-spacing:-.2px; }.location-panel-heading p { margin:0; color:#7a887e; font-size:9px; line-height:1.5; }
+.location-panel>.locate-button { justify-self:start; min-height:36px; font-size:10px; }.location-panel .location-message { margin:0; }.location-selected { display:flex; align-items:center; gap:6px; color:#397653; font-size:9px; font-weight:700; }.coordinates { padding-top:9px; border-top:1px solid #e8eee7; }.coordinates summary { color:#53745b; font-size:9px; font-weight:700; cursor:pointer; }.coordinates .map-picker-instruction { margin:8px 0; }
 .priority-brief { margin:19px 0; padding:16px; border:1px solid #e5eae5; border-radius:9px; background:linear-gradient(135deg,#fbfdfb,#f7faf7); }
 .priority-brief-heading { display:flex; align-items:center; gap:9px; }
 .priority-brief-icon { display:grid; place-items:center; width:31px; height:31px; color:#4c7759; background:#eaf3eb; border-radius:8px; }
