@@ -93,7 +93,7 @@ function AdminRow({ report, staff, canAssign, onSaved }) {
   const currentStaffMismatch = report.assigned_to && !categoryStaff.some((member) => String(member.id) === String(report.assigned_to));
   const leadingReason = report.priority_brief?.reasons?.find((reason) => !reason.label.includes('selected priority'));
   return <tr>
-    <td><Link className="admin-report-title" to={`/reports/${report.id}`}><b>{report.title}</b><small>#{String(report.id).padStart(4,'0')} · {report.neighborhood}</small></Link></td>
+    <td><Link className="admin-report-title" to={`/reports/${report.id}`}><b>{report.title}</b><small>#{String(report.id).padStart(4,'0')} · {report.neighborhood}</small></Link>{report.image_url ? <a className="admin-report-photo" href={mediaUrl(report.image_url)} target="_blank" rel="noreferrer" aria-label={`View submitted photo for ${report.title}`}><img src={mediaUrl(report.image_url)} alt={`Submitted photo for ${report.title}`} loading="lazy"/><span><ImagePlus size={12}/>View submitted photo</span></a> : <small className="admin-no-photo">No photo attached</small>}</td>
     <td><StatusBadge status={report.status}/><ResolutionReview report={report} onReviewed={onSaved}/></td>
     <td className="civic-signal-cell"><PriorityScore brief={report.priority_brief}/>{leadingReason && <small>{leadingReason.label}</small>}</td>
     <td><span className="category-label">{report.category_name || report.category.replaceAll('_',' ')}</span></td>
