@@ -7,7 +7,7 @@ const { z, statuses, priorities } = require('../utils/validation');
 
 const router = express.Router();
 const reportColumns = `r.id, r.title, r.description, r.category, r.neighborhood, r.landmark,
-  r.latitude, r.longitude, r.status, r.priority, r.assigned_to, r.created_at, r.updated_at, r.resolved_at,
+  r.image_url, r.latitude, r.longitude, r.status, r.priority, r.assigned_to, r.created_at, r.updated_at, r.resolved_at,
   assignee.name AS assigned_to_name,
   (SELECT COUNT(*) FROM report_confirmations c WHERE c.report_id = r.id) AS confirmations`;
 

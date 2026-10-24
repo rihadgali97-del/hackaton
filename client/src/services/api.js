@@ -1,4 +1,5 @@
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+const apiOrigin = new URL(baseUrl, window.location.origin).origin;
 
 export async function api(path, options = {}) {
   const token = sessionStorage.getItem('fixnearme_token');
@@ -7,7 +8,7 @@ export async function api(path, options = {}) {
     response = await fetch(`${baseUrl}${path}`, {
       ...options,
       headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
@@ -27,3 +28,4 @@ export async function api(path, options = {}) {
 }
 
 export const apiPath = baseUrl;
+export const mediaUrl = (path) => path ? new URL(path, apiOrigin).href : '';

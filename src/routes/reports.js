@@ -1,13 +1,33 @@
 const express = require('express');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const multer = require('multer');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/async-handler');
 const { authenticate, optionalAuthenticate, allowRoles } = require('../middleware/auth');
 const { z, statuses, priorities, reportSchema } = require('../utils/validation');
 const { findDuplicateReports } = require('../utils/duplicates');
+const { detectImageExtension } = require('../utils/image-type');
+
+const uploadDirectory = path.join(__dirname, '..', '..', 'uploads');
+const uploadImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 8, parts: 9, fieldNameSize: 50, fieldSize: 5000, fieldNestingDepth: 0 },
+}).single('image');
+function parseReportImage(req, res, next) {
+  uploadImage(req, res, (error) => {
+    if (error) return next(error);
+    if (!req.file) return next();
+    req.imageExtension = detectImageExtension(req.file.buffer);
+    if (!req.imageExtension) return res.status(400).json({ error: { code: 'INVALID_IMAGE_TYPE', message: 'Upload a valid JPEG, PNG, or WebP image.' } });
+    next();
+  });
+}
 
 const router = express.Router();
 const publicColumns = `r.id, r.title, r.description, r.category, r.neighborhood, r.landmark,
-  r.latitude, r.longitude, r.status, r.priority, r.assigned_to, r.created_at, r.updated_at, r.resolved_at,
+  r.image_url, r.latitude, r.longitude, r.status, r.priority, r.assigned_to, r.created_at, r.updated_at, r.resolved_at,
   assignee.name AS assigned_to_name,
   (SELECT COUNT(*) FROM report_confirmations c WHERE c.report_id = r.id) AS confirmations`;
 
@@ -55,22 +75,36 @@ router.post('/check-duplicates', asyncHandler(async (req, res) => {
   res.json({ data: matches, threshold, suggestions_only: true });
 }));
 
-router.post('/', optionalAuthenticate, asyncHandler(async (req, res) => {
+router.post('/', optionalAuthenticate, parseReportImage, asyncHandler(async (req, res) => {
   const data = reportSchema.parse(req.body);
   const userId = req.get('authorization') ? req.user?.id : null;
-  const conn = await pool.getConnection();
+  let imageUrl = null;
+  let imagePath = null;
+  let conn;
   try {
+    conn = await pool.getConnection();
+    if (req.file) {
+      const filename = `${crypto.randomUUID()}.${req.imageExtension}`;
+      await fs.mkdir(uploadDirectory, { recursive: true });
+      imagePath = path.join(uploadDirectory, filename);
+      imageUrl = `/uploads/${filename}`;
+      await fs.writeFile(imagePath, req.file.buffer, { flag: 'wx' });
+    }
     await conn.beginTransaction();
     const [result] = await conn.execute(
-      `INSERT INTO reports (title, description, category, neighborhood, landmark, latitude, longitude, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.title, data.description, data.category, data.neighborhood, data.landmark || null, data.latitude ?? null, data.longitude ?? null, userId || null],
+      `INSERT INTO reports (title, description, image_url, category, neighborhood, landmark, latitude, longitude, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [data.title, data.description, imageUrl, data.category, data.neighborhood, data.landmark || null, data.latitude ?? null, data.longitude ?? null, userId || null],
     );
     await conn.execute(`INSERT INTO report_updates (report_id, user_id, old_status, new_status, old_priority, new_priority, note)
       VALUES (?, ?, NULL, 'reported', NULL, 'medium', 'Report submitted')`, [result.insertId, userId || null]);
     await conn.commit();
-    res.status(201).json({ data: { id: result.insertId, ...data, status: 'reported', priority: 'medium' } });
-  } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+    res.status(201).json({ data: { id: result.insertId, ...data, image_url: imageUrl, status: 'reported', priority: 'medium' } });
+  } catch (error) {
+    if (conn) await conn.rollback().catch(() => {});
+    if (imagePath) await fs.unlink(imagePath).catch(() => {});
+    throw error;
+  } finally { conn?.release(); }
 }));
 
 router.post('/:id/confirm', authenticate, asyncHandler(async (req, res) => {

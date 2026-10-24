@@ -29,6 +29,8 @@ FixNearMe tracks neighborhood problems from resident submission through staff re
 8. Create a production frontend bundle with `npm run client:build`.
 9. Run backend unit tests with `npm test`.
 
+To reset an existing super-admin password, set `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` only in the current terminal and run `npm run reset:super-admin`. The command updates only a `super_admin` account matching that email; it does not save the plaintext password in the database or project files. Clear those terminal variables afterward.
+
 ## Roles
 
 - **Resident:** register, sign in, submit and confirm reports.
@@ -50,7 +52,7 @@ All endpoints use `/api`. Protected routes accept `Authorization: Bearer <token>
 | `GET /auth/me` | Signed in | Current account |
 | `GET /reports` | Public | Search (`search`), filters, `page`, `limit` |
 | `GET /reports/:id` | Public | Report details |
-| `POST /reports` | Public or signed in | Submit report; anonymous submissions are rate limited |
+| `POST /reports` | Public or signed in | Submit a report with optional `image` upload |
 | `POST /reports/check-duplicates` | Public | Rule-based suggestions; does not merge or alter reports |
 | `POST /reports/:id/confirm` | Signed in | Confirm a report once per account |
 | `GET /reports/:id/updates` | Public | Chronological status, priority, assignment, and note history |
@@ -64,6 +66,8 @@ All endpoints use `/api`. Protected routes accept `Authorization: Bearer <token>
 | `PATCH /admin/staff/:id` | Super admin | Activate/deactivate staff (`is_active`) |
 
 Report categories: `road_damage`, `streetlight`, `water_leak`, `drainage`, `waste`, `sidewalk`, `other`. Statuses: `reported`, `under_review`, `in_progress`, `resolved`, `rejected`. Priorities: `low`, `medium`, `high`, `urgent`.
+
+Report submission accepts `multipart/form-data`; use `image` for one optional JPEG, PNG, or WebP file up to 5 MB. The API checks the file signature, creates a random server-side filename, stores it under the ignored local `uploads/` directory, and returns its public `image_url`. Uploaded images are displayed on report details. Apply migration `002_report_image.sql` with `npm run migrate` before using image uploads. Local filesystem uploads suit development; use durable object storage for production deployments.
 
 To assign or clear a staff member, a super admin sends `PATCH /api/admin/reports/:id` with `{ "assigned_to": 42 }` or `{ "assigned_to": null }`. Assignment requires an active account whose role is `staff`. Every assignment/status/priority change is recorded in `report_updates` in the same transaction as the report update.
 
