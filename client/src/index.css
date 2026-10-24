@@ -185,3 +185,5 @@ h1,h2,h3,h4 { font-family: 'Manrope','DM Sans',sans-serif; letter-spacing: -.04e
   .category-admin-fields { grid-template-columns:1fr; }
   .category-slug { grid-column:auto; }
 }
+
+.admin-report-photo { display:flex; align-items:center; gap:7px; width:max-content; max-width:190px; margin-top:7px; color:#477257; font-size:9px; font-weight:700; }.admin-report-photo img { width:44px; height:36px; object-fit:cover; border:1px solid #e5ebe4; border-radius:5px; background:#f5f7f3; }.admin-report-photo:hover span { text-decoration:underline; }.admin-report-photo span { display:flex; align-items:center; gap:4px; }.admin-no-photo { display:block; margin-top:6px; color:#9aa39b; font-size:8px; }

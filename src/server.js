@@ -31,7 +31,10 @@ app.use(helmet());
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',').map((origin) => origin.trim());
 app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)), credentials: true }));
 app.use(express.json({ limit: '1mb' }));
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), { dotfiles: 'deny', index: false, fallthrough: false, maxAge: '1h' }));
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '..', 'uploads'), { dotfiles: 'deny', index: false, fallthrough: false, maxAge: '1h' }));
 const isLocalDevelopmentRequest = (req) => process.env.NODE_ENV === 'development'
   && ['::1', '127.0.0.1', '::ffff:127.0.0.1'].includes(req.ip);
 const skipNonWriteRequests = (req) => ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
