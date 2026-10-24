@@ -190,3 +190,6 @@ h1,h2,h3,h4 { font-family: 'Manrope','DM Sans',sans-serif; letter-spacing: -.04e
 }
 
 .admin-report-photo { display:flex; align-items:center; gap:7px; width:max-content; max-width:190px; margin-top:7px; color:#477257; font-size:9px; font-weight:700; }.admin-report-photo img { width:44px; height:36px; object-fit:cover; border:1px solid #e5ebe4; border-radius:5px; background:#f5f7f3; }.admin-report-photo:hover span { text-decoration:underline; }.admin-report-photo span { display:flex; align-items:center; gap:4px; }.admin-no-photo { display:block; margin-top:6px; color:#9aa39b; font-size:8px; }
+.language-toggle { display:inline-grid; place-items:center; min-width:40px; height:36px; padding:0 9px; border:1px solid #dce7dd; border-radius:8px; color:#24613f; background:#f6faf6; font-size:11px; font-weight:800; cursor:pointer; }.language-toggle:hover { border-color:#b9d0bf; background:#edf6ef; }.auth-language-toggle { position:absolute; top:24px; right:28px; }
+html[lang="am"], html[lang="am"] body, html[lang="am"] button, html[lang="am"] input, html[lang="am"] textarea, html[lang="am"] select { font-family:'Nyala','Noto Sans Ethiopic','Abyssinica SIL',sans-serif; }
+html[lang="am"] h1, html[lang="am"] h2, html[lang="am"] h3, html[lang="am"] h4 { font-family:'Nyala','Noto Sans Ethiopic','Abyssinica SIL',sans-serif; letter-spacing:0; }

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { Link } from 'react-router-dom';
 import { latLngBounds } from 'leaflet';
+import { useLanguage } from '../context/LanguageContext';
 
 const defaultCenter = [9.03, 38.74];
 const statusColors = {
@@ -16,6 +17,7 @@ const statusLabels = { reported: 'Reported', under_review: 'Under review', in_pr
 
 function MapContent({ reports, onPick, selectedLocation }) {
   const map = useMap();
+  const { t } = useLanguage();
   useEffect(() => {
     if (selectedLocation) {
       map.setView([selectedLocation.latitude, selectedLocation.longitude], Math.max(map.getZoom(), 15));
@@ -40,7 +42,7 @@ function MapContent({ reports, onPick, selectedLocation }) {
       const fill = statusColors[report.status] || statusColors.reported;
       const urgent = report.priority === 'urgent';
       return <CircleMarker key={report.id} center={[Number(report.latitude), Number(report.longitude)]} radius={urgent ? 9 : 7} pathOptions={{ color: urgent ? '#bf4d3c' : '#fff', weight: urgent ? 3 : 2, fillColor: fill, fillOpacity: .92 }}>
-        <Popup><div className="map-popup"><span className="map-popup-category">{report.category_name || report.category?.replaceAll('_', ' ')}</span><Link to={`/reports/${report.id}`} className="map-popup-title">{report.title}</Link><span className="map-popup-meta">{report.neighborhood} · {statusLabels[report.status] || report.status.replaceAll('_', ' ')} · {report.priority} priority</span></div></Popup>
+      <Popup><div className="map-popup"><span className="map-popup-category">{t(report.category_name || report.category?.replaceAll('_', ' '))}</span><Link to={`/reports/${report.id}`} className="map-popup-title">{report.title}</Link><span className="map-popup-meta">{report.neighborhood} · {t(statusLabels[report.status] || report.status.replaceAll('_', ' '))} · {t(report.priority[0].toUpperCase() + report.priority.slice(1))} {t('priority')}</span></div></Popup>
       </CircleMarker>;
     })}
     {selectedLocation && <CircleMarker center={[selectedLocation.latitude, selectedLocation.longitude]} radius={9} pathOptions={{ color: '#fff', weight: 3, fillColor: '#397753', fillOpacity: 1 }} />}

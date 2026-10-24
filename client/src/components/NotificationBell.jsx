@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, ClipboardList } from 'lucide-react';
 import { api } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 
-function timeAgo(value) {
+function timeAgo(value, language, t) {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
-  if (seconds < 60) return 'Just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
+  if (seconds < 60) return t('Just now');
+  const formatter = new Intl.RelativeTimeFormat(language === 'am' ? 'am-ET' : 'en-US', { numeric: 'auto' });
+  if (seconds < 3600) return formatter.format(-Math.floor(seconds / 60), 'minute');
+  if (seconds < 86400) return formatter.format(-Math.floor(seconds / 3600), 'hour');
+  return formatter.format(-Math.floor(seconds / 86400), 'day');
 }
 
 export default function NotificationBell() {
@@ -18,6 +20,7 @@ export default function NotificationBell() {
   const [error, setError] = useState('');
   const rootRef = useRef(null);
   const navigate = useNavigate();
+  const { language, t } = useLanguage();
 
   const refresh = useCallback(async () => {
     try {
@@ -26,9 +29,9 @@ export default function NotificationBell() {
       setUnread(Number(result.unread_count) || 0);
       setError('');
     } catch {
-      setError('Notifications are temporarily unavailable.');
+      setError(t('Notifications are temporarily unavailable.'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     refresh();
@@ -49,7 +52,7 @@ export default function NotificationBell() {
 
   async function markAllRead() {
     if (!unread) return;
-    try { await api('/notifications/read-all', { method: 'PATCH' }); await refresh(); } catch { setError('Could not update notifications. Try again.'); }
+    try { await api('/notifications/read-all', { method: 'PATCH' }); await refresh(); } catch { setError(t('Could not update notifications. Try again.')); }
   }
 
   async function openNotification(item) {
@@ -63,16 +66,16 @@ export default function NotificationBell() {
   }
 
   return <div className="notification-menu" ref={rootRef}>
-    <button className="notification-trigger" type="button" aria-label={`Notifications, ${unread} unread`} aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open) refresh(); }}>
+    <button className="notification-trigger" type="button" aria-label={`${t('Notifications')}, ${unread} ${t('unread')}`} aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open) refresh(); }}>
       <Bell size={19} />{unread > 0 && <span className="notification-badge">{unread > 99 ? '99+' : unread > 9 ? '9+' : unread}</span>}
     </button>
-    {open && <section className="notification-popover" aria-label="Notifications">
-      <header className="notification-heading"><div><b>Notifications</b><small>{unread ? `${unread} unread` : 'You’re all caught up'}</small></div><button type="button" onClick={markAllRead} disabled={!unread}><CheckCheck size={15} />Mark all read</button></header>
+    {open && <section className="notification-popover" aria-label={t('Notifications')}>
+      <header className="notification-heading"><div><b>{t('Notifications')}</b><small>{unread ? `${unread} ${t('unread')}` : t('You’re all caught up')}</small></div><button type="button" onClick={markAllRead} disabled={!unread}><CheckCheck size={15} />{t('Mark all read')}</button></header>
       {error && <p className="notification-error" role="status">{error}</p>}
       <div className="notification-list">
-        {!items.length && !error && <div className="notification-empty"><Bell size={22} /><span>No notifications yet</span><small>New reports and assignments will appear here.</small></div>}
+        {!items.length && !error && <div className="notification-empty"><Bell size={22} /><span>{t('No notifications yet')}</span><small>{t('New reports and assignments will appear here.')}</small></div>}
         {items.map((item) => <button className={`notification-item ${item.read_at ? '' : 'unread'}`} key={item.id} type="button" onClick={() => openNotification(item)}>
-          <span className="notification-item-icon"><ClipboardList size={16} /></span><span className="notification-item-copy"><b>{item.title}</b><span>{item.body}</span><small>{timeAgo(item.created_at)}</small></span>{!item.read_at && <i aria-label="Unread" />}
+          <span className="notification-item-icon"><ClipboardList size={16} /></span><span className="notification-item-copy"><b>{t(item.title)}</b><span>{t(item.body)}</span><small>{timeAgo(item.created_at, language, t)}</small></span>{!item.read_at && <i aria-label={t('Unread')} />}
         </button>)}
       </div>
     </section>}
